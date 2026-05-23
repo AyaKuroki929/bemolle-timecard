@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="タイムカード">
+  <title>タイムカード | Bemolle</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    :root {
+      --primary:       #c4977a;
+      --primary-light: #f7ede4;
+      --primary-dark:  #7a5240;
+      --text:          #3d2b1f;
+      --text-muted:    #9a7a6a;
+      --bg:            #fdf8f4;
+      --white:         #ffffff;
+      --success:       #7db88f;
+      --danger:        #d97070;
+      --border:        #e8d5c8;
+      --shadow:        rgba(122, 82, 64, 0.12);
+    }
+
+    body {
+      font-family: -apple-system, 'Hiragino Sans', 'Yu Gothic', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Loading ── */
+    .loading-overlay {
+      position: fixed; inset: 0;
+      background: rgba(253,248,244,0.8);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 9998;
+      backdrop-filter: blur(2px);
+      transition: opacity 0.2s;
+    }
+    .loading-overlay.hidden { opacity: 0; pointer-events: none; }
+
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Setup screen ── */
+    .setup-screen {
+      flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px;
+    }
+    .setup-card {
+      background: var(--white); border: 1px solid var(--border); border-radius: 20px;
+      padding: 32px 28px; width: 100%; max-width: 480px;
+    }
+    .setup-title {
+      font-size: 20px; font-weight: 700; color: var(--primary-dark);
+      margin-bottom: 6px;
+    }
+    .setup-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; line-height: 1.6; }
+    .setup-steps {
+      background: var(--primary-light); border-radius: 12px; padding: 16px 20px;
+      margin-bottom: 20px; font-size: 13px; line-height: 2;
+    }
+    .setup-steps ol { padding-left: 18px; }
+    .setup-steps li { color: var(--text); }
+    .setup-steps code {
+      background: var(--white); padding: 1px 6px; border-radius: 4px;
+      font-size: 12px; color: var(--primary-dark);
+    }
+    .setup-input-row { display: flex; gap: 8px; }
+
+    /* ── Header ── */
+    .header {
+      background: var(--white); border-bottom: 1px solid var(--border);
+      padding: 16px 24px; display: flex; justify-content: space-between; align-items: center;
+      box-shadow: 0 2px 10px var(--shadow); flex-shrink: 0;
+    }
+    .header-logo { font-size: 17px; font-weight: 700; color: var(--primary-dark); letter-spacing: 0.08em; }
+    .header-logo span { display: block; font-size: 10px; font-weight: 400; color: var(--text-muted); letter-spacing: 0.12em; margin-top: 1px; }
+    .clock-time { font-size: 34px; font-weight: 200; font-variant-numeric: tabular-nums; }
+    .clock-date { font-size: 11px; color: var(--text-muted); margin-top: 2px; text-align: right; }
+
+    /* ── Main ── */
+    .main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 20px 80px; gap: 28px; }
+
+    /* ── Staff grid ── */
+    .section-label { font-size: 11px; color: var(--text-muted); letter-spacing: 0.1em; text-align: center; margin-bottom: 12px; }
+    .staff-section, .action-section, .today-status, .memo-section { width: 100%; max-width: 520px; }
+
+    .staff-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+    .staff-grid-empty { text-align: center; padding: 20px; color: var(--text-muted); font-size: 13px; background: var(--white); border: 1px dashed var(--border); border-radius: 12px; }
+
+    .staff-btn {
+      padding: 20px 14px; background: var(--white); border: 2px solid var(--border);
+      border-radius: 14px; font-size: 17px; font-weight: 500; color: var(--text);
+      cursor: pointer; transition: all 0.18s; text-align: center;
+    }
+    .staff-btn.selected { background: var(--primary); border-color: var(--primary); color: var(--white); box-shadow: 0 4px 16px rgba(196,151,122,0.35); }
+    .staff-btn:active { transform: scale(0.96); }
+
+    /* ── Action buttons ── */
+    .action-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .action-btn {
+      padding: 34px 20px; border: none; border-radius: 20px;
+      font-size: 21px; font-weight: 700; cursor: pointer; transition: all 0.18s;
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+      letter-spacing: 0.1em; box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    }
+    .action-btn .icon { font-size: 38px; line-height: 1; }
+    .btn-in  { background: var(--success); color: #fff; }
+    .btn-out { background: var(--danger);  color: #fff; }
+    .action-btn:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
+    .action-btn:not(:disabled):active { transform: scale(0.96); }
+
+    /* ── Today status ── */
+    .today-status { background: var(--white); border: 1px solid var(--border); border-radius: 14px; padding: 16px 20px; }
+    .today-status h3 { font-size: 10px; color: var(--text-muted); letter-spacing: 0.1em; margin-bottom: 10px; }
+    .status-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; }
+    .status-row + .status-row { border-top: 1px solid var(--border); }
+    .status-badge { display: inline-block; padding: 3px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+    .badge-in  { background: #e8f5eb; color: #3d8b50; }
+    .badge-out { background: #fde8e8; color: #b84040; }
+
+    /* ── Memo ── */
+    .memo-section { background: var(--white); border: 1px solid var(--border); border-radius: 14px; padding: 16px 20px; }
+    .memo-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .memo-saved { font-size: 11px; color: var(--success); opacity: 0; transition: opacity 0.4s; }
+    .memo-saved.show { opacity: 1; }
+    .memo-textarea {
+      width: 100%; border: 1.5px solid var(--border); border-radius: 10px;
+      padding: 11px 14px; font-size: 15px; font-family: inherit; color: var(--text);
+      resize: none; outline: none; background: var(--bg); transition: border-color 0.18s; line-height: 1.7;
+    }
+    .memo-textarea:focus { border-color: var(--primary); }
+    .memo-textarea::placeholder { color: var(--text-muted); }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed; bottom: 32px; left: 50%;
+      transform: translateX(-50%) translateY(120px);
+      background: var(--text); color: var(--white); padding: 13px 26px;
+      border-radius: 50px; font-size: 15px; font-weight: 500;
+      transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+      z-index: 9999; white-space: nowrap; pointer-events: none;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* ── Admin trigger ── */
+    .admin-trigger {
+      position: fixed; bottom: 20px; right: 20px;
+      background: var(--white); border: 1px solid var(--border); border-radius: 50%;
+      width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 21px; box-shadow: 0 2px 10px var(--shadow);
+      color: var(--text-muted); z-index: 10; transition: all 0.18s;
+    }
+    .admin-trigger:active { transform: scale(0.93); }
+
+    /* ── Modals ── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px;
+    }
+    .modal {
+      background: var(--white); border-radius: 22px; padding: 26px 24px;
+      width: 100%; max-width: 540px; max-height: 88vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    }
+    .modal-title { font-size: 16px; font-weight: 700; color: var(--primary-dark); margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+
+    /* ── PIN ── */
+    .pin-display { display: flex; justify-content: center; gap: 14px; margin-bottom: 8px; }
+    .pin-dot { width: 17px; height: 17px; border-radius: 50%; border: 2.5px solid var(--border); background: transparent; transition: all 0.15s; }
+    .pin-dot.filled { background: var(--primary); border-color: var(--primary); }
+    .pin-error { text-align: center; color: var(--danger); font-size: 13px; min-height: 18px; margin-bottom: 12px; }
+    .pin-keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; max-width: 260px; margin: 0 auto; }
+    .pin-key {
+      aspect-ratio: 1; border: 1.5px solid var(--border); border-radius: 50%;
+      background: var(--white); font-size: 22px; font-weight: 300; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; color: var(--text); transition: all 0.12s;
+    }
+    .pin-key:active { background: var(--primary-light); transform: scale(0.93); }
+    .pin-key.empty  { border: none; cursor: default; }
+    .pin-key.delete { font-size: 18px; color: var(--text-muted); }
+
+    /* ── Admin tabs ── */
+    .admin-tabs { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+    .admin-tab { padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border); background: transparent; cursor: pointer; font-size: 13px; color: var(--text-muted); transition: all 0.18s; }
+    .admin-tab.active { background: var(--primary); border-color: var(--primary); color: var(--white); font-weight: 600; }
+
+    /* ── Table ── */
+    .table-wrap { max-height: 300px; overflow-y: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border); border-radius: 10px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th { padding: 9px 10px; text-align: left; background: var(--primary-light); color: var(--primary-dark); font-weight: 700; font-size: 11px; letter-spacing: 0.06em; position: sticky; top: 0; border-bottom: 1px solid var(--border); }
+    tbody td { padding: 9px 10px; border-bottom: 1px solid var(--border); }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: var(--primary-light); }
+    tfoot td { padding: 9px 10px; font-weight: 700; background: var(--primary-light); color: var(--primary-dark); }
+    .empty-row td { text-align: center; padding: 24px; color: var(--text-muted); }
+
+    /* ── Export ── */
+    .export-btns { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+
+    /* ── Buttons ── */
+    .btn { padding: 10px 18px; border-radius: 10px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.18s; letter-spacing: 0.02em; }
+    .btn-primary   { background: var(--primary);      color: var(--white); }
+    .btn-secondary { background: var(--primary-light); color: var(--primary-dark); }
+    .btn-dark      { background: #7a5240;              color: var(--white); }
+    .btn-danger    { background: var(--danger);        color: var(--white); }
+    .btn:active { transform: scale(0.96); }
+
+    /* ── Form inputs ── */
+    .input-row { display: flex; gap: 8px; margin-bottom: 10px; }
+    .text-input { flex: 1; padding: 11px 14px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 15px; outline: none; color: var(--text); background: var(--white); transition: border-color 0.18s; }
+    .text-input:focus { border-color: var(--primary); }
+    .date-input { padding: 7px 10px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 13px; outline: none; color: var(--text); background: var(--white); transition: border-color 0.18s; }
+    .date-input:focus { border-color: var(--primary); }
+    select.date-input { cursor: pointer; }
+
+    /* ── Date filter ── */
+    .date-filter { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+    .date-filter span { color: var(--text-muted); font-size: 12px; }
+
+    /* ── Settings ── */
+    .settings-section { margin-bottom: 22px; padding-bottom: 22px; border-bottom: 1px solid var(--border); }
+    .settings-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .settings-label { font-size: 13px; font-weight: 700; color: var(--primary-dark); margin-bottom: 12px; }
+    .staff-list-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+    .staff-list-item:last-child { border-bottom: none; }
+    .del-btn { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 17px; padding: 2px 6px; }
+
+    /* ── Memo list in admin ── */
+    .memo-list-item { display: flex; gap: 10px; align-items: flex-start; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .memo-list-item:last-child { border-bottom: none; }
+    .memo-date-tag { flex-shrink: 0; color: var(--text-muted); width: 78px; padding-top: 1px; font-size: 12px; }
+    .memo-text-content { flex: 1; white-space: pre-wrap; word-break: break-all; line-height: 1.6; }
+
+    /* ── Print ── */
+    @media print {
+      .admin-trigger, .toast, .export-btns, .admin-tabs, .date-filter, .modal-close-row, .del-btn, button { display: none !important; }
+      body { background: white !important; }
+      .modal-overlay { position: static; background: none; padding: 0; display: block; }
+      .modal { max-height: none; box-shadow: none; border-radius: 0; padding: 16px; }
+      .print-title { display: block !important; font-size: 16px; font-weight: bold; text-align: center; margin-bottom: 12px; }
+      .table-wrap { max-height: none; border: 1px solid #ccc; }
+      thead th { background: #f0f0f0 !important; }
+    }
+    .print-title { display: none; }
+  </style>
+</head>
+<body>
+
+<!-- Loading -->
+<div class="loading-overlay hidden" id="loadingOverlay"><div class="spinner"></div></div>
+
+<!-- Setup screen (API_URL未設定時) -->
+<div class="setup-screen" id="setupScreen" style="display:none;">
+  <div class="setup-card">
+    <div class="setup-title">🔧 初回セットアップ</div>
+    <div class="setup-sub">Google Sheets と連携するための URL を設定します。</div>
+    <div class="setup-steps">
+      <ol>
+        <li>Google スプレッドシートを新規作成</li>
+        <li>拡張機能 → <code>Apps Script</code> を開く</li>
+        <li><code>Code.gs</code> の内容を貼り付けて保存</li>
+        <li>デプロイ → 新しいデプロイ → ウェブアプリ<br>
+            実行ユーザー: <strong>自分</strong> ／ アクセス: <strong>全員</strong></li>
+        <li>デプロイ URL をコピーして下に貼り付け</li>
+      </ol>
+    </div>
+    <div class="setup-input-row">
+      <input type="text" class="text-input" id="setupUrlInput"
+             placeholder="https://script.google.com/macros/s/.../exec">
+      <button class="btn btn-primary" onclick="saveApiUrl()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Main app (hidden until API_URL set) -->
+<div id="app" style="display:none; flex-direction:column; flex:1;">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-logo">Bemolle <span>TIMECARD SYSTEM</span></div>
+    <div>
+      <div class="clock-time" id="clockTime">--:--:--</div>
+      <div class="clock-date" id="clockDate"></div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="staff-section">
+      <div class="section-label">スタッフを選択</div>
+      <div class="staff-grid" id="staffGrid"></div>
+    </div>
+
+    <div class="action-section">
+      <div class="action-buttons">
+        <button class="action-btn btn-in"  id="btnIn"  disabled onclick="clockAction('in')">
+          <span class="icon">☀</span>出　勤
+        </button>
+        <button class="action-btn btn-out" id="btnOut" disabled onclick="clockAction('out')">
+          <span class="icon">🌙</span>退　勤
+        </button>
+      </div>
+    </div>
+
+    <div class="today-status" id="todayStatus" style="display:none;">
+      <h3>本日の記録</h3>
+      <div id="statusContent"></div>
+    </div>
+
+    <div class="memo-section" id="memoSection" style="display:none;">
+      <div class="memo-header">
+        <div class="section-label" style="margin:0;">📝 <span id="memoStaffLabel">—</span> のメモ</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn btn-secondary" id="memoEditBtn" style="display:none;font-size:12px;padding:6px 12px;" onclick="startMemoEdit()">修正</button>
+          <button class="btn btn-primary"   id="memoSaveBtn" style="font-size:12px;padding:6px 12px;" onclick="saveMemoManual()">保存</button>
+        </div>
+      </div>
+      <textarea class="memo-textarea" id="memoTextarea" rows="3" placeholder=""></textarea>
+    </div>
+  </div>
+
+</div><!-- /#app -->
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Admin trigger -->
+<button class="admin-trigger" id="adminTrigger" style="display:none;" onclick="openAdminPin()" title="管理者">⚙</button>
+
+<!-- ── PIN Modal ── -->
+<div class="modal-overlay" id="pinModal" style="display:none;" onclick="handleOverlay(event,'pinModal')">
+  <div class="modal">
+    <div class="modal-title">管理者ログイン</div>
+    <div class="pin-display" id="pinDisplay">
+      <div class="pin-dot" id="pd0"></div><div class="pin-dot" id="pd1"></div>
+      <div class="pin-dot" id="pd2"></div><div class="pin-dot" id="pd3"></div>
+    </div>
+    <div class="pin-error" id="pinError"></div>
+    <div class="pin-keypad">
+      <button class="pin-key" onclick="pinKey('1')">1</button>
+      <button class="pin-key" onclick="pinKey('2')">2</button>
+      <button class="pin-key" onclick="pinKey('3')">3</button>
+      <button class="pin-key" onclick="pinKey('4')">4</button>
+      <button class="pin-key" onclick="pinKey('5')">5</button>
+      <button class="pin-key" onclick="pinKey('6')">6</button>
+      <button class="pin-key" onclick="pinKey('7')">7</button>
+      <button class="pin-key" onclick="pinKey('8')">8</button>
+      <button class="pin-key" onclick="pinKey('9')">9</button>
+      <button class="pin-key empty"></button>
+      <button class="pin-key" onclick="pinKey('0')">0</button>
+      <button class="pin-key delete" onclick="pinDel()">⌫</button>
+    </div>
+    <div style="text-align:center;margin-top:20px;">
+      <button class="btn btn-secondary" onclick="closeModal('pinModal')">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Admin Modal ── -->
+<div class="modal-overlay" id="adminModal" style="display:none;" onclick="handleOverlay(event,'adminModal')">
+  <div class="modal">
+    <div class="modal-title">管理パネル</div>
+    <div class="admin-tabs">
+      <button class="admin-tab active" onclick="switchTab('records')">打刻記録</button>
+      <button class="admin-tab"        onclick="switchTab('summary')">月次集計</button>
+      <button class="admin-tab"        onclick="switchTab('settings')">設定</button>
+    </div>
+
+    <!-- Records -->
+    <div id="tab-records">
+      <div class="print-title" id="printTitleRecords">打刻記録</div>
+      <div class="date-filter">
+        <input type="date" class="date-input" id="filterFrom" onchange="renderRecords()">
+        <span>〜</span>
+        <input type="date" class="date-input" id="filterTo" onchange="renderRecords()">
+        <button class="btn btn-secondary" style="font-size:12px;padding:7px 11px;" onclick="setThisMonth()">今月</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>日付</th><th>時刻</th><th>スタッフ</th><th>種別</th><th></th></tr></thead>
+          <tbody id="recordsTbody"></tbody>
+        </table>
+      </div>
+      <div id="adminMemoSection" style="margin-top:16px;">
+        <div style="font-size:10px;color:var(--text-muted);letter-spacing:0.08em;margin-bottom:6px;">📝 日報メモ</div>
+        <div id="adminMemoList" style="border:1px solid var(--border);border-radius:10px;padding:4px 14px;min-height:40px;"></div>
+      </div>
+      <div class="export-btns">
+        <button class="btn btn-primary"   onclick="exportCSV()">📥 CSV</button>
+        <button class="btn btn-secondary" onclick="printPage('records')">🖨 印刷</button>
+        <button class="btn btn-dark"      onclick="genLastMonthPDF()">📄 先月PDF（スタッフ別）</button>
+      </div>
+    </div>
+
+    <!-- Summary -->
+    <div id="tab-summary" style="display:none;">
+      <div class="print-title" id="printTitleSummary">月次勤務集計</div>
+      <div class="date-filter">
+        <select class="date-input" id="summaryMonth" onchange="renderSummary()"></select>
+        <select class="date-input" id="summaryStaff" onchange="renderSummary()"></select>
+      </div>
+      <div id="summaryContainer"></div>
+      <div class="export-btns">
+        <button class="btn btn-primary"   onclick="exportSummaryCSV()">📥 CSV</button>
+        <button class="btn btn-secondary" onclick="printPage('summary')">🖨 印刷</button>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div id="tab-settings" style="display:none;">
+      <div class="settings-section">
+        <div class="settings-label">スタッフ管理</div>
+        <div class="input-row">
+          <input type="text" class="text-input" id="newStaffName" placeholder="スタッフ名" maxlength="20"
+                 onkeydown="if(event.key==='Enter')addStaff()">
+          <button class="btn btn-primary" onclick="addStaff()">追加</button>
+        </div>
+        <div id="staffListAdmin"></div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-label">管理者 PIN 変更</div>
+        <div class="input-row">
+          <input type="password" class="text-input" id="newPin"
+                 placeholder="新しいPIN（4桁）" maxlength="4" inputmode="numeric">
+          <button class="btn btn-primary" onclick="changePin()">変更</button>
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-label">API URL</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Apps Script の URL を変更します</div>
+        <div class="input-row">
+          <input type="text" class="text-input" id="apiUrlInput" placeholder="https://script.google.com/...">
+          <button class="btn btn-primary" onclick="updateApiUrl()">変更</button>
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-label" style="color:var(--danger);">データ削除</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">全打刻データを削除します。この操作は元に戻せません。</div>
+        <button class="btn btn-danger" onclick="clearAllData()">全データを削除</button>
+      </div>
+    </div>
+
+    <div class="modal-close-row" style="text-align:right;margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">
+      <button class="btn btn-secondary" onclick="closeModal('adminModal')">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  設定
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const API_URL_KEY = 'tc_api_url';
+const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbw9SmXqYA0i_Vysp4l0ZbRcNjvTs0miOm-CFVcF9kWLGm-VZ43sqo9FWT0rpgf0PJq4kA/exec';
+let API_URL = localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL;
+
+function saveApiUrl() {
+  const val = document.getElementById('setupUrlInput').value.trim();
+  if (!val.startsWith('https://script.google.com')) {
+    showToast('正しいURL を入力してください'); return;
+  }
+  localStorage.setItem(API_URL_KEY, val);
+  API_URL = val;
+  startApp();
+}
+
+function updateApiUrl() {
+  const val = document.getElementById('apiUrlInput').value.trim();
+  if (!val.startsWith('https://script.google.com')) { showToast('正しいURL を入力してください'); return; }
+  localStorage.setItem(API_URL_KEY, val);
+  API_URL = val;
+  showToast('API URL を更新しました');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  API layer
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let loadingCount = 0;
+
+function setLoading(on) {
+  loadingCount += on ? 1 : -1;
+  loadingCount = Math.max(0, loadingCount);
+  document.getElementById('loadingOverlay').classList.toggle('hidden', loadingCount === 0);
+}
+
+async function api(action, data = {}, method = 'GET') {
+  setLoading(true);
+  try {
+    let res;
+    if (method === 'GET') {
+      const p = new URLSearchParams({ action, ...data });
+      res = await fetch(`${API_URL}?${p}`, { redirect: 'follow' });
+    } else {
+      res = await fetch(API_URL, {
+        method: 'POST', redirect: 'follow',
+        body: JSON.stringify({ action, ...data }),
+      });
+    }
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'APIエラー');
+    return json.data;
+  } catch (err) {
+    showToast('⚠ ' + err.message);
+    throw err;
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  Clock
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const DAYS = ['日','月','火','水','木','金','土'];
+let lastTickDate = '';
+
+function tick() {
+  const now = new Date();
+  document.getElementById('clockTime').textContent =
+    `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  document.getElementById('clockDate').textContent =
+    `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日（${DAYS[now.getDay()]}）`;
+  const today = dateStr(now);
+  if (lastTickDate && lastTickDate !== today) {
+    if (selectedStaff) loadStaffMemo(selectedStaff);
+  }
+  lastTickDate = today;
+}
+setInterval(tick, 1000);
+tick();
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  State
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let staffCache     = null;
+let selectedStaff  = null;
+let todayRecs      = [];
+let memosCache     = {};
+let adminRecs      = [];
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  Init
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function startApp() {
+  document.getElementById('setupScreen').style.display = 'none';
+  document.getElementById('app').style.display         = 'flex';
+  document.getElementById('adminTrigger').style.display = 'flex';
+
+  try {
+    await api('init', {}, 'POST');
+    await Promise.all([loadStaff(), loadTodayRecs()]);
+  } catch {
+    // エラーはshowToastで表示済み
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  Staff
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function loadStaff() {
+  staffCache = await api('getStaff');
+  renderStaffGrid();
+}
+
+function renderStaffGrid() {
+  const grid = document.getElementById('staffGrid');
+  grid.innerHTML = '';
+  if (!staffCache || staffCache.length === 0) {
+    grid.innerHTML = '<div class="staff-grid-empty">⚙ 管理者画面からスタッフを登録してください</div>';
+    return;
+  }
+  staffCache.forEach(name => {
+    const btn = document.createElement('button');
+    btn.className = 'staff-btn' + (name === selectedStaff ? ' selected' : '');
+    btn.textContent = name;
+    btn.onclick = () => selectStaff(name);
+    grid.appendChild(btn);
+  });
+}
+
+function selectStaff(name) {
+  selectedStaff = name;
+  renderStaffGrid();
+  updateActionBtns();
+  renderTodayStatus();
+  loadStaffMemo(name);
+}
+
+function updateActionBtns() {
+  if (!selectedStaff) {
+    document.getElementById('btnIn').disabled  = true;
+    document.getElementById('btnOut').disabled = true;
+    return;
+  }
+  const today = dateStr(new Date());
+  const recs = todayRecs.filter(r => r.staff === selectedStaff && r.timestamp.slice(0,10) === today);
+  const lastType = recs.length > 0 ? recs[recs.length - 1].type : null;
+  document.getElementById('btnIn').disabled  = lastType === 'in' || lastType === 'out';
+  document.getElementById('btnOut').disabled = lastType !== 'in';
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  Clock in/out
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function clockAction(type) {
+  if (!selectedStaff) return;
+  try {
+    const rec = await api('clockAction', { staff: selectedStaff, type, userAgent: navigator.userAgent }, 'POST');
+    todayRecs.push(rec);
+    renderTodayStatus();
+    updateActionBtns();
+    showToast(type === 'in'
+      ? `☀ ${selectedStaff}さん　出勤打刻しました`
+      : `🌙 ${selectedStaff}さん　退勤打刻しました`);
+  } catch { /* showToastで表示済み */ }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  Today records
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function loadTodayRecs() {
+  const today = dateStr(new Date());
+  todayRecs = await api('getRecords', { from: today, to: today });
+  renderTodayStatus();
+}
+
+function renderTodayStatus() {
+  const box = document.getElementById('todayStatus');
+  if (!selectedStaff) { box.style.display = 'none'; return; }
+
+  const today = dateStr(new Date());
+  const recs  = todayRecs
+    .filter(r => r.staff === selectedStaff && r.timestamp.slice(0,10) === today)
+    .slice().reverse();
+
+  if (recs.length === 0) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  document.getElementById('statusContent').innerHTML = recs.map(r => `
+    <div class="status-row">
+      <span>${formatTime(new Date(r.timestamp))}</span>
+      ${r.type === 'in'
+        ? '<span class="status-badge badge-in">出勤</span>'
+        : '<span class="status-badge badge-out">退勤</span>'}
+    </div>`).join('');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  Memo
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function loadStaffMemo(staffName) {
+  const section = document.getElementById('memoSection');
+  if (!staffName) { section.style.display = 'none'; return; }
+
+  document.getElementById('memoStaffLabel').textContent = staffName;
+  const textarea = document.getElementById('memoTextarea');
+  textarea.value = '';
+  setMemoMode('edit');
+  section.style.display = 'block';
+
+  try {
+    const today = dateStr(new Date());
+    const memos = await api('getMemos', { from: today, to: today, staff: staffName });
+    const saved = memos[today] || '';
+    textarea.value = saved;
+    if (saved) setMemoMode('saved');
+  } catch { /* showToastで表示済み */ }
+}
+
+function setMemoMode(mode) {
+  const textarea = document.getElementById('memoTextarea');
+  const saveBtn  = document.getElementById('memoSaveBtn');
+  const editBtn  = document.getElementById('memoEditBtn');
+  if (mode === 'saved') {
+    textarea.readOnly       = true;
+    textarea.style.opacity  = '0.7';
+    saveBtn.style.display   = 'none';
+    editBtn.style.display   = 'inline-block';
+  } else {
+    textarea.readOnly       = false;
+    textarea.style.opacity  = '1';
+    saveBtn.style.display   = 'inline-block';
+    editBtn.style.display   = 'none';
+    textarea.focus();
+  }
+}
+
+async function saveMemoManual() {
+  if (!selectedStaff) return;
+  const text = document.getElementById('memoTextarea').value;
+  try {
+    await api('saveMemo', { date: dateStr(new Date()), staff: selectedStaff, text }, 'POST');
+    setMemoMode('saved');
+    showToast('✓ メモを保存しました');
+  } catch { /* showToastで表示済み */ }
+}
+
+function startMemoEdit() {
+  setMemoMode('edit');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  Toast
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  PIN
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let pinBuf = '';
+
+function openAdminPin() {
+  pinBuf = '';
+  updatePinDots();
+  document.getElementById('pinError').textContent = '';
+  document.getElementById('pinModal').style.display = 'flex';
+}
+
+async function pinKey(d) {
+  if (pinBuf.length >= 4) return;
+  pinBuf += d;
+  updatePinDots();
+  if (pinBuf.length < 4) return;
+
+  await new Promise(r => setTimeout(r, 180));
+  try {
+    const res = await api('checkPin', { pin: pinBuf });
+    if (res.valid) {
+      closeModal('pinModal');
+      openAdmin();
+    } else {
+      document.getElementById('pinError').textContent = 'PINが正しくありません';
+      pinBuf = '';
+      updatePinDots();
+    }
+  } catch {
+    pinBuf = '';
+    updatePinDots();
+  }
+}
+
+function pinDel() { pinBuf = pinBuf.slice(0, -1); updatePinDots(); }
+function updatePinDots() {
+  for (let i = 0; i < 4; i++)
+    document.getElementById('pd'+i).classList.toggle('filled', i < pinBuf.length);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  Admin
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function openAdmin() {
+  document.getElementById('apiUrlInput').value = API_URL;
+  setThisMonth();
+  renderStaffListAdmin();
+  document.getElementById('adminModal').style.display = 'flex';
+}
+
+function switchTab(tab) {
+  ['records','summary','settings'].forEach((t, i) => {
+    document.getElementById('tab-'+t).style.display = t === tab ? 'block' : 'none';
+    document.querySelectorAll('.admin-tab')[i].classList.toggle('active', t === tab);
+  });
+  if (tab === 'summary') renderSummary();
+  if (tab === 'records') renderRecords();
+}
+
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+function handleOverlay(e, id) { if (e.target === e.currentTarget) closeModal(id); }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  Records tab
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function setThisMonth() {
+  const now = new Date();
+  const y = now.getFullYear(), m = pad(now.getMonth()+1);
+  document.getElementById('filterFrom').value = `${y}-${m}-01`;
+  document.getElementById('filterTo').value   = dateStr(new Date(now.getFullYear(), now.getMonth()+1, 0));
+  renderRecords();
+}
+
+async function renderRecords() {
+  const from = document.getElementById('filterFrom').value;
+  const to   = document.getElementById('filterTo').value;
+  const label = from && to ? `${from} 〜 ${to}` : '全期間';
+  document.getElementById('printTitleRecords').textContent = `打刻記録（${label}）`;
+
+  try {
+    adminRecs = await api('getRecords', { from, to });
+    const tbody = document.getElementById('recordsTbody');
+
+    if (adminRecs.length === 0) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="5">記録がありません</td></tr>';
+    } else {
+      const sorted = adminRecs.slice().sort((a,b) => b.timestamp.localeCompare(a.timestamp));
+      tbody.innerHTML = sorted.map(r => {
+        const dt = new Date(r.timestamp);
+        const badge = r.type === 'in'
+          ? '<span class="status-badge badge-in">出勤</span>'
+          : '<span class="status-badge badge-out">退勤</span>';
+        return `<tr>
+          <td>${dateStr(dt)}</td><td>${formatTime(dt)}</td>
+          <td>${r.staff}</td><td>${badge}</td>
+          <td><button onclick="deleteRecord('${r.id}')"
+            style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:17px;">✕</button></td>
+        </tr>`;
+      }).join('');
+    }
+
+    await renderMemoList(from, to);
+  } catch { /* エラーは表示済み */ }
+}
+
+async function renderMemoList(from, to) {
+  const list_ = await api('getAllMemos', { from: from || '', to: to || '' });
+  memosCache  = list_;
+  const list  = document.getElementById('adminMemoList');
+  if (list_.length === 0) {
+    list.innerHTML = '<div style="padding:10px 0;color:var(--text-muted);font-size:12px;">メモがありません</div>';
+    return;
+  }
+  list.innerHTML = list_.map(({ date, staff, memo }) => `
+    <div class="memo-list-item">
+      <div class="memo-date-tag">${date}</div>
+      <div style="flex-shrink:0;width:64px;font-size:12px;color:var(--primary-dark);font-weight:600;">${staff}</div>
+      <div class="memo-text-content">${memo.replace(/</g,'&lt;')}</div>
+      <button onclick="deleteMemo('${date}','${staff}')"
+        style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:15px;flex-shrink:0;">✕</button>
+    </div>`).join('');
+}
+
+async function deleteRecord(id) {
+  if (!confirm('この記録を削除しますか？')) return;
+  await api('deleteRecord', { id }, 'POST');
+  renderRecords();
+}
+
+async function deleteMemo(date, staff) {
+  if (!confirm(`${date} / ${staff} のメモを削除しますか？`)) return;
+  await api('deleteMemo', { date, staff }, 'POST');
+  renderRecords();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  CSV export
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function exportCSV() {
+  const from = document.getElementById('filterFrom').value;
+  const to   = document.getElementById('filterTo').value;
+  const recs = adminRecs.slice().sort((a,b) => a.timestamp.localeCompare(b.timestamp));
+
+  let csv = '﻿日付,時刻,スタッフ名,種別\n';
+  recs.forEach(r => {
+    const dt = new Date(r.timestamp);
+    csv += `${dateStr(dt)},${formatTime(dt)},${r.staff},${r.type==='in'?'出勤':'退勤'}\n`;
+  });
+
+  const memos = Array.isArray(memosCache) ? memosCache : [];
+  if (memos.length > 0) {
+    csv += '\n﻿日付,スタッフ,メモ\n';
+    memos.slice().sort((a,b) => a.date.localeCompare(b.date) || a.staff.localeCompare(b.staff))
+      .forEach(({ date, staff, memo }) => { csv += `${date},${staff},"${memo.replace(/"/g,'""')}"\n`; });
+  }
+
+  download(csv, `打刻記録_${from||'all'}-${to||'all'}.csv`, 'text/csv;charset=utf-8;');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  Summary tab
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let summaryRecs = [];
+
+async function renderSummary() {
+  populateSummarySelectors();
+  const month       = document.getElementById('summaryMonth').value;
+  const staffFilter = document.getElementById('summaryStaff').value;
+  if (!month) return;
+
+  const [y, mo] = month.split('-').map(Number);
+  document.getElementById('printTitleSummary').textContent =
+    `月次勤務集計（${y}年${parseInt(mo)}月 / ${staffFilter}）`;
+
+  try {
+    const from = `${month}-01`;
+    const to   = dateStr(new Date(y, mo, 0));
+    summaryRecs = await api('getRecords', { from, to });
+    const memos = await api('getMemos', { from, to });
+    memosCache  = { ...memosCache, ...memos };
+
+    const map = buildDayMap(summaryRecs, staffFilter);
+    if (Object.keys(map).length === 0) {
+      document.getElementById('summaryContainer').innerHTML =
+        '<div style="padding:20px;text-align:center;color:var(--text-muted);">記録がありません</div>';
+      return;
+    }
+
+    let html = '';
+    Object.entries(map).forEach(([staff, days]) => {
+      let totalMin = 0;
+      const sortedDays = Object.entries(days).sort(([a],[b]) => a.localeCompare(b));
+      const rows = sortedDays.map(([date, times]) => {
+        const inT  = times.in  ? formatTime(new Date(times.in))  : '—';
+        const outT = times.out ? formatTime(new Date(times.out)) : '—';
+        let dur = '—';
+        if (times.in && times.out) {
+          const mins = Math.round((new Date(times.out) - new Date(times.in)) / 60000);
+          if (mins > 0) { totalMin += mins; dur = fmtDur(mins); }
+        }
+        return `<tr><td>${date}</td><td>${inT}</td><td>${outT}</td><td>${dur}</td></tr>`;
+      }).join('');
+
+      html += `<div style="margin-bottom:20px;">
+        <div style="font-weight:700;margin-bottom:8px;color:var(--primary-dark);">${staff}</div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>日付</th><th>出勤</th><th>退勤</th><th>勤務時間</th></tr></thead>
+          <tbody>${rows}</tbody>
+          <tfoot><tr><td colspan="3">月間合計（${sortedDays.length}日）</td><td>${fmtDur(totalMin)}</td></tr></tfoot>
+        </table></div></div>`;
+    });
+    document.getElementById('summaryContainer').innerHTML = html;
+  } catch { /* エラーは表示済み */ }
+}
+
+function populateSummarySelectors() {
+  const recs   = [...adminRecs, ...summaryRecs];
+  const months = new Set();
+  recs.forEach(r => { const d = new Date(r.timestamp); months.add(`${d.getFullYear()}-${pad(d.getMonth()+1)}`); });
+  const now = new Date();
+  months.add(`${now.getFullYear()}-${pad(now.getMonth()+1)}`);
+  months.add(`${now.getFullYear()}-${pad(now.getMonth())}`); // last month too
+
+  const sorted = [...months].filter(Boolean).sort().reverse();
+  const sel = document.getElementById('summaryMonth');
+  const cur = sel.value;
+  sel.innerHTML = sorted.map(m => { const [y,mo]=m.split('-'); return `<option value="${m}">${y}年${parseInt(mo)}月</option>`; }).join('');
+  if (cur && sorted.includes(cur)) sel.value = cur;
+
+  const staffList = ['全員', ...(staffCache || [])];
+  const ss2 = document.getElementById('summaryStaff');
+  const cs  = ss2.value;
+  ss2.innerHTML = staffList.map(s => `<option value="${s}">${s}</option>`).join('');
+  if (cs && staffList.includes(cs)) ss2.value = cs;
+}
+
+function exportSummaryCSV() {
+  const month       = document.getElementById('summaryMonth').value;
+  const staffFilter = document.getElementById('summaryStaff').value;
+  const map = buildDayMap(summaryRecs, staffFilter);
+  let csv = '﻿スタッフ,日付,出勤,退勤,勤務時間(分),勤務時間\n';
+  Object.entries(map).forEach(([staff, days]) => {
+    Object.entries(days).sort(([a],[b]) => a.localeCompare(b)).forEach(([date, times]) => {
+      const inT  = times.in  ? formatTime(new Date(times.in))  : '';
+      const outT = times.out ? formatTime(new Date(times.out)) : '';
+      let mins='', dur='';
+      if (times.in && times.out) {
+        const m = Math.round((new Date(times.out)-new Date(times.in))/60000);
+        if (m>0) { mins=m; dur=fmtDur(m); }
+      }
+      csv += `${staff},${date},${inT},${outT},${mins},${dur}\n`;
+    });
+  });
+  download(csv, `勤務集計_${month}_${staffFilter}.csv`, 'text/csv;charset=utf-8;');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  先月分PDF出力
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function genLastMonthPDF() {
+  const now = new Date();
+  const lastMonth = new Date(now.getFullYear(), now.getMonth()-1, 1);
+  const year = lastMonth.getFullYear(), mo = lastMonth.getMonth()+1;
+  const monthStr = `${year}-${pad(mo)}`;
+  const from = `${monthStr}-01`;
+  const to   = dateStr(new Date(year, mo, 0));
+
+  let recs, memos, allowances;
+  try {
+    [recs, memos, allowances] = await Promise.all([
+      api('getRecords',         { from, to }),
+      api('getAllMemos',         { from, to }),
+      api('getDailyAllowance',  { from, to }),
+    ]);
+  } catch { return; }
+
+  const staff = staffCache || [];
+  if (staff.length === 0) { showToast('スタッフが登録されていません'); return; }
+  if (recs.length === 0)  { showToast(`${year}年${mo}月の記録がありません`); return; }
+
+  const map          = buildDayMap(recs, '全員');
+  const daysInMonth  = new Date(year, mo, 0).getDate();
+  const allDates     = Array.from({length: daysInMonth}, (_,i) => `${monthStr}-${pad(i+1)}`);
+
+  let pages = '';
+  staff.forEach((staffName, idx) => {
+    const days = map[staffName] || {};
+    let totalMin = 0, workDays = 0;
+
+    let totalAllowance = 0;
+    const rows = allDates.map(date => {
+      const times = days[date] || {in:null,out:null};
+      const memoEntry = Array.isArray(memos) ? memos.find(m => m.date === date && m.staff === staffName) : null;
+      const memo  = (memoEntry ? memoEntry.memo : '').replace(/</g,'&lt;').replace(/\n/g,'<br>');
+      const allowEntry = Array.isArray(allowances) ? allowances.find(a => a.date === date && a.staff === staffName) : null;
+      const allowAmt = allowEntry ? allowEntry.amount : '';
+      if (allowAmt !== '' && !isNaN(Number(String(allowAmt).replace(/,/g,'')))) {
+        totalAllowance += Number(String(allowAmt).replace(/,/g,''));
+      }
+      const inT   = times.in  ? formatTime(new Date(times.in))  : '';
+      const outT  = times.out ? formatTime(new Date(times.out)) : '';
+      let dur = '';
+      if (times.in && times.out) {
+        const mins = Math.round((new Date(times.out)-new Date(times.in))/60000);
+        if (mins>0) { totalMin+=mins; workDays++; dur=fmtDur(mins); }
+      }
+      const d = new Date(date+'T00:00:00');
+      const dayLabel = `${parseInt(date.split('-')[2])}（${DAYS[d.getDay()]}）`;
+      const weekend  = d.getDay()===0||d.getDay()===6;
+      const allowDisplay = allowAmt !== '' ? String(allowAmt).replace(/\B(?=(\d{3})+(?!\d))/g,',') : '';
+      return `<tr class="${weekend?'wk':''}">
+        <td class="dc">${dayLabel}</td><td class="tc">${inT}</td>
+        <td class="tc">${outT}</td><td class="tc">${dur}</td>
+        <td class="nc">${allowDisplay}</td>
+        <td class="mc">${memo}</td></tr>`;
+    }).join('');
+
+    const pb = idx < staff.length-1 ? 'page-break-after:always;' : '';
+    pages += `<div style="${pb}padding:28px 32px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2.5px solid #c4977a;padding-bottom:10px;margin-bottom:16px;">
+        <div>
+          <div style="font-size:11px;color:#a07850;letter-spacing:.15em;margin-bottom:3px;">Bemolle</div>
+          <div style="font-size:22px;font-weight:700;color:#7a5240;">勤怠管理表</div>
+        </div>
+        <div style="text-align:right;font-size:13px;">
+          <div style="margin-bottom:4px;"><span style="font-size:10px;color:#888;width:52px;display:inline-block;">対象月</span><strong>${year}年${mo}月</strong></div>
+          <div><span style="font-size:10px;color:#888;width:52px;display:inline-block;">スタッフ</span><strong>${staffName}</strong></div>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>日付</th><th>出勤</th><th>退勤</th><th>勤務時間</th><th>日当</th><th>メモ</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td colspan="3">月間合計 / 勤務 <strong>${workDays}日</strong></td><td><strong>${fmtDur(totalMin)}</strong></td><td class="nc"><strong>${totalAllowance>0?totalAllowance.toLocaleString()+'円':''}</strong></td><td></td></tr></tfoot>
+      </table>
+      <div style="display:flex;gap:32px;margin-top:22px;align-items:flex-end;">
+        <div><div style="font-size:10px;color:#999;margin-bottom:4px;">確認印</div><div style="width:56px;height:56px;border:1px solid #ccc;"></div></div>
+        <div><div style="font-size:10px;color:#999;margin-bottom:4px;">本人署名</div><div style="width:200px;height:1px;background:#888;margin-bottom:4px;"></div></div>
+      </div>
+    </div>`;
+  });
+
+  const win = window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
+<title>${year}年${mo}月 勤怠管理表</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;font-size:12px;color:#2a1a12}
+table{width:100%;border-collapse:collapse;margin-bottom:18px}
+th{padding:7px 8px;background:#f5ede4;color:#7a5240;font-weight:700;font-size:11px;border:1px solid #ddc8b8;text-align:center}
+td{padding:5px 8px;border:1px solid #e0cfc4;vertical-align:top}
+.dc{width:72px;text-align:center}.tc{width:68px;text-align:center}.nc{width:72px;text-align:right;font-size:11px}.mc{font-size:10.5px;color:#555;line-height:1.5}
+tr.wk td{background:#fdf5f2;color:#aaa}
+tfoot td{background:#f5ede4;font-weight:600;color:#7a5240;border-top:1.5px solid #c4977a;padding:8px 10px}
+@media print{body{font-size:11px}@page{margin:12mm;size:A4 portrait}}
+</style></head><body>${pages}
+<script>window.onload=function(){window.print()};<\/script></body></html>`);
+  win.document.close();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  Settings
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function renderStaffListAdmin() {
+  const list = document.getElementById('staffListAdmin');
+  if (!staffCache || staffCache.length === 0) {
+    list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:8px 0;">登録されていません</div>';
+    return;
+  }
+  list.innerHTML = staffCache.map((name, i) => `
+    <div class="staff-list-item">
+      <span>${name}</span>
+      <button class="del-btn" onclick="removeStaff('${name}')">✕</button>
+    </div>`).join('');
+}
+
+async function addStaff() {
+  const input = document.getElementById('newStaffName');
+  const name  = input.value.trim();
+  if (!name) return;
+  const res = await api('addStaff', { name }, 'POST');
+  if (!res.added) { showToast(res.reason || '追加できませんでした'); return; }
+  input.value = '';
+  await loadStaff();
+  renderStaffListAdmin();
+  showToast(`${name} を追加しました`);
+}
+
+async function removeStaff(name) {
+  if (!confirm(`「${name}」を削除しますか？（打刻記録は残ります）`)) return;
+  await api('removeStaff', { name }, 'POST');
+  if (selectedStaff === name) { selectedStaff = null; updateActionBtns(); renderTodayStatus(); }
+  await loadStaff();
+  renderStaffListAdmin();
+}
+
+async function changePin() {
+  const val = document.getElementById('newPin').value.trim();
+  if (!/^\d{4}$/.test(val)) { showToast('4桁の数字を入力してください'); return; }
+  await api('changePin', { newPin: val }, 'POST');
+  document.getElementById('newPin').value = '';
+  showToast('PINを変更しました');
+}
+
+async function clearAllData() {
+  if (!confirm('全打刻データを削除します。元に戻せません。\n\n実行しますか？')) return;
+  await api('clearRecords', {}, 'POST');
+  todayRecs = [];
+  adminRecs = [];
+  renderTodayStatus();
+  renderRecords();
+  showToast('全データを削除しました');
+}
+
+function printPage(tab) { switchTab(tab); setTimeout(() => window.print(), 300); }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  Utils
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function pad(n)        { return String(n).padStart(2,'0'); }
+function dateStr(d)    { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function formatTime(d) { return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+function fmtDur(mins)  { return `${Math.floor(mins/60)}時間${pad(mins%60)}分`; }
+
+function download(content, filename, mime) {
+  const url = URL.createObjectURL(new Blob([content], {type: mime}));
+  Object.assign(document.createElement('a'), {href:url, download:filename}).click();
+  URL.revokeObjectURL(url);
+}
+
+function buildDayMap(recs, staffFilter) {
+  const filtered = staffFilter && staffFilter !== '全員'
+    ? recs.filter(r => r.staff === staffFilter) : recs;
+  const map = {};
+  filtered.forEach(r => {
+    const date = r.timestamp.slice(0,10);
+    if (!map[r.staff]) map[r.staff] = {};
+    if (!map[r.staff][date]) map[r.staff][date] = {in:null, out:null};
+    const existing = map[r.staff][date][r.type];
+    const t = new Date(r.timestamp);
+    if (r.type==='in') {
+      if (!existing || t < new Date(existing)) map[r.staff][date].in = r.timestamp;
+    } else {
+      if (!existing || t > new Date(existing)) map[r.staff][date].out = r.timestamp;
+    }
+  });
+  return map;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  Boot
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+if (API_URL) {
+  startApp();
+} else {
+  document.getElementById('setupScreen').style.display = 'flex';
+  document.getElementById('loadingOverlay').classList.add('hidden');
+}
+</script>
+</body>
+</html>
