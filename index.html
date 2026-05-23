@@ -445,6 +445,11 @@
         </div>
       </div>
       <div class="settings-section">
+        <div class="settings-label">LINE通知トリガー</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">退勤打ち忘れ通知（毎日20時）のトリガーを設定します。初回のみ実行してください。</div>
+        <button class="btn btn-primary" onclick="setupTriggersAction()">トリガーを設定</button>
+      </div>
+      <div class="settings-section">
         <div class="settings-label" style="color:var(--danger);">データ削除</div>
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">全打刻データを削除します。この操作は元に戻せません。</div>
         <button class="btn btn-danger" onclick="clearAllData()">全データを削除</button>
@@ -1010,7 +1015,8 @@ async function genLastMonthPDF() {
     const days = map[staffName] || {};
     let totalMin = 0, workDays = 0;
 
-    let totalAllowance = 0;
+    const hasAllowance = Array.isArray(allowances) && allowances.some(a => a.staff === staffName && a.amount !== '' && Number(String(a.amount).replace(/,/g,'')) > 0);
+    let totalAllowance = 0, totalActualMin = 0;
     const rows = allDates.map(date => {
       const times = days[date] || {in:null,out:null};
       const memoEntry = Array.isArray(memos) ? memos.find(m => m.date === date && m.staff === staffName) : null;
@@ -1022,22 +1028,30 @@ async function genLastMonthPDF() {
       }
       const inT   = times.in  ? formatTime(new Date(times.in))  : '';
       const outT  = times.out ? formatTime(new Date(times.out)) : '';
-      let dur = '';
+      let dur = '', actualDur = '';
       if (times.in && times.out) {
         const mins = Math.round((new Date(times.out)-new Date(times.in))/60000);
-        if (mins>0) { totalMin+=mins; workDays++; dur=fmtDur(mins); }
+        if (mins>0) {
+          totalMin+=mins; workDays++; dur=fmtDur(mins);
+          if (!hasAllowance) { const am=mins-90; if(am>0){totalActualMin+=am; actualDur=fmtDur(am);} }
+        }
       }
       const d = new Date(date+'T00:00:00');
       const dayLabel = `${parseInt(date.split('-')[2])}（${DAYS[d.getDay()]}）`;
       const weekend  = d.getDay()===0||d.getDay()===6;
       const allowDisplay = allowAmt !== '' ? String(allowAmt).replace(/\B(?=(\d{3})+(?!\d))/g,',') : '';
+      const fifthCol = hasAllowance ? `<td class="nc">${allowDisplay}</td>` : `<td class="tc">${actualDur}</td>`;
       return `<tr class="${weekend?'wk':''}">
         <td class="dc">${dayLabel}</td><td class="tc">${inT}</td>
         <td class="tc">${outT}</td><td class="tc">${dur}</td>
-        <td class="nc">${allowDisplay}</td>
+        ${fifthCol}
         <td class="mc">${memo}</td></tr>`;
     }).join('');
 
+    const th5 = hasAllowance ? '日当' : '実働時間';
+    const tf5 = hasAllowance
+      ? `<td class="nc"><strong>${totalAllowance>0?totalAllowance.toLocaleString()+'円':''}</strong></td>`
+      : `<td class="tc"><strong>${totalActualMin>0?fmtDur(totalActualMin):''}</strong></td>`;
     const pb = idx < staff.length-1 ? 'page-break-after:always;' : '';
     pages += `<div style="${pb}padding:28px 32px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2.5px solid #c4977a;padding-bottom:10px;margin-bottom:16px;">
@@ -1051,9 +1065,9 @@ async function genLastMonthPDF() {
         </div>
       </div>
       <table>
-        <thead><tr><th>日付</th><th>出勤</th><th>退勤</th><th>勤務時間</th><th>日当</th><th>メモ</th></tr></thead>
+        <thead><tr><th>日付</th><th>出勤</th><th>退勤</th><th>勤務時間</th><th>${th5}</th><th>メモ</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><td colspan="3">月間合計 / 勤務 <strong>${workDays}日</strong></td><td><strong>${fmtDur(totalMin)}</strong></td><td class="nc"><strong>${totalAllowance>0?totalAllowance.toLocaleString()+'円':''}</strong></td><td></td></tr></tfoot>
+        <tfoot><tr><td colspan="3">月間合計 / 勤務 <strong>${workDays}日</strong></td><td><strong>${fmtDur(totalMin)}</strong></td>${tf5}<td></td></tr></tfoot>
       </table>
       <div style="display:flex;gap:32px;margin-top:22px;align-items:flex-end;">
         <div><div style="font-size:10px;color:#999;margin-bottom:4px;">確認印</div><div style="width:56px;height:56px;border:1px solid #ccc;"></div></div>
@@ -1122,6 +1136,11 @@ async function changePin() {
   await api('changePin', { newPin: val }, 'POST');
   document.getElementById('newPin').value = '';
   showToast('PINを変更しました');
+}
+
+async function setupTriggersAction() {
+  const res = await api('setupTriggers', {}, 'POST');
+  showToast(res.message || 'トリガーを設定しました');
 }
 
 async function clearAllData() {

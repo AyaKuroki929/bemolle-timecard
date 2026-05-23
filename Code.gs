@@ -58,6 +58,7 @@ function handle(params, body) {
       case 'removeStaff':       result = removeStaff(d);            break;
       case 'checkPin':          result = checkPin(d);               break;
       case 'changePin':         result = changePin(d);              break;
+      case 'setupTriggers':    result = setupTriggers();          break;
       default: throw new Error('Unknown action: ' + action);
     }
     return ok(result);
@@ -151,6 +152,63 @@ function sendUnauthorizedAlert(staff, type, ua, timestamp) {
     payload: JSON.stringify({ messages: [{ type: 'text', text: msg }] }),
     muteHttpExceptions: true,
   });
+}
+
+// ─── 退勤打ち忘れチェック（毎日20時トリガー） ───────────
+function checkForgottenClockOut() {
+  const ss  = SpreadsheetApp.getActiveSpreadsheet();
+  const rec = ss.getSheetByName(SH_RECORDS);
+  if (!rec) return;
+
+  const tz    = Session.getScriptTimeZone();
+  const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const data  = rec.getDataRange().getValues(); // [id, staff, type, timestamp]
+
+  // 今日の打刻をスタッフ別に集計（最後の type を記録）
+  const lastType  = {};
+  const inTimeMap = {};
+
+  data.slice(1).forEach(row => {
+    const ts    = row[3];
+    if (!ts) return;
+    const tsDate = Utilities.formatDate(new Date(ts), tz, 'yyyy-MM-dd');
+    if (tsDate !== today) return;
+
+    const staff = row[1];
+    const type  = row[2];
+    lastType[staff] = type;
+    if (type === 'in') {
+      inTimeMap[staff] = Utilities.formatDate(new Date(ts), tz, 'HH:mm');
+    }
+  });
+
+  // 退勤していないスタッフを抽出
+  const forgotten = Object.keys(lastType).filter(s => lastType[s] === 'in');
+  if (forgotten.length === 0) return;
+
+  const token = PropertiesService.getScriptProperties().getProperty('LINE_TOKEN');
+  if (!token) return;
+
+  const lines = forgotten.map(s => `・${s}（出勤 ${inTimeMap[s]}）`).join('\n');
+  const msg   = `⚠️ 退勤打ち忘れの可能性\n\n${lines}\n\n確認してください。`;
+
+  UrlFetchApp.fetch('https://api.line.me/v2/bot/message/broadcast', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + token },
+    payload: JSON.stringify({ messages: [{ type: 'text', text: msg }] }),
+    muteHttpExceptions: true,
+  });
+}
+
+// ─── トリガー設定 ────────────────────────────────────
+function setupTriggers() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === 'checkForgottenClockOut')
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('checkForgottenClockOut')
+    .timeBased().everyDays(1).atHour(20).create();
+  return { message: '毎日20時のトリガーを設定しました' };
 }
 
 // ─── 打刻記録 取得 ───────────────────────────────────
