@@ -466,7 +466,9 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  設定
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const API_URL_KEY = 'tc_api_url';
+const API_URL_KEY    = 'tc_api_url';
+const STAFF_CACHE_KEY = 'tc_staff_cache';
+const INIT_DONE_KEY   = 'tc_initialized';
 const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbw9SmXqYA0i_Vysp4l0ZbRcNjvTs0miOm-CFVcF9kWLGm-VZ43sqo9FWT0rpgf0PJq4kA/exec';
 let API_URL = localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL;
 
@@ -552,6 +554,7 @@ let selectedStaff  = null;
 let todayRecs      = [];
 let memosCache     = {};
 let adminRecs      = [];
+let todayMemosAll  = {}; // staffName → memo（起動時に全員分プリフェッチ）
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  Init
@@ -561,9 +564,19 @@ async function startApp() {
   document.getElementById('app').style.display         = 'flex';
   document.getElementById('adminTrigger').style.display = 'flex';
 
+  // キャッシュがあればスタッフを即表示（GAS応答を待たない）
+  const cached = localStorage.getItem(STAFF_CACHE_KEY);
+  if (cached) {
+    try { staffCache = JSON.parse(cached); renderStaffGrid(); } catch {}
+  }
+
   try {
-    await api('init', {}, 'POST');
-    await Promise.all([loadStaff(), loadTodayRecs()]);
+    // initSheets は初回のみ（2回目以降はスキップして高速化）
+    if (!localStorage.getItem(INIT_DONE_KEY)) {
+      await api('init', {}, 'POST');
+      localStorage.setItem(INIT_DONE_KEY, '1');
+    }
+    await loadStartupData();
   } catch {
     // エラーはshowToastで表示済み
   }
@@ -572,8 +585,22 @@ async function startApp() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  Staff
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function loadStartupData() {
+  const today = dateStr(new Date());
+  const data  = await api('getStartupData', { today });
+  staffCache = data.staff || [];
+  localStorage.setItem(STAFF_CACHE_KEY, JSON.stringify(staffCache));
+  renderStaffGrid();
+  todayRecs = data.records || [];
+  renderTodayStatus();
+  updateActionBtns();
+  todayMemosAll = {};
+  (data.memos || []).forEach(({ staff, memo }) => { todayMemosAll[staff] = memo; });
+}
+
 async function loadStaff() {
   staffCache = await api('getStaff');
+  localStorage.setItem(STAFF_CACHE_KEY, JSON.stringify(staffCache));
   renderStaffGrid();
 }
 
@@ -662,23 +689,37 @@ function renderTodayStatus() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  Memo
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function loadTodayMemos() {
+  const today = dateStr(new Date());
+  try {
+    const list = await api('getAllMemos', { from: today, to: today });
+    todayMemosAll = {};
+    list.forEach(({ staff, memo }) => { todayMemosAll[staff] = memo; });
+  } catch {}
+}
+
 async function loadStaffMemo(staffName) {
   const section = document.getElementById('memoSection');
   if (!staffName) { section.style.display = 'none'; return; }
 
   document.getElementById('memoStaffLabel').textContent = staffName;
   const textarea = document.getElementById('memoTextarea');
-  textarea.value = '';
-  setMemoMode('edit');
+
+  // キャッシュから即表示（API待ち不要）
+  const cached = todayMemosAll[staffName] || '';
+  textarea.value = cached;
+  setMemoMode(cached ? 'saved' : 'edit');
   section.style.display = 'block';
 
+  // バックグラウンドで最新を取得してキャッシュ更新
   try {
     const today = dateStr(new Date());
     const memos = await api('getMemos', { from: today, to: today, staff: staffName });
     const saved = memos[today] || '';
+    todayMemosAll[staffName] = saved;
     textarea.value = saved;
-    if (saved) setMemoMode('saved');
-  } catch { /* showToastで表示済み */ }
+    if (saved) setMemoMode('saved'); else setMemoMode('edit');
+  } catch {}
 }
 
 function setMemoMode(mode) {

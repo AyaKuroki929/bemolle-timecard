@@ -56,8 +56,9 @@ function handle(params, body) {
       case 'getStaff':          result = getStaff();                break;
       case 'addStaff':          result = addStaff(d);               break;
       case 'removeStaff':       result = removeStaff(d);            break;
-      case 'checkPin':          result = checkPin(d);               break;
+      case 'checkPin':          result = checkPin(params);           break;
       case 'changePin':         result = changePin(d);              break;
+      case 'getStartupData':   result = getStartupData(params);   break;
       case 'setupTriggers':    result = setupTriggers();          break;
       default: throw new Error('Unknown action: ' + action);
     }
@@ -199,6 +200,16 @@ function checkForgottenClockOut() {
     payload: JSON.stringify({ messages: [{ type: 'text', text: msg }] }),
     muteHttpExceptions: true,
   });
+}
+
+// ─── 起動データ一括取得（スタッフ＋今日の記録＋今日のメモ）────
+function getStartupData(params) {
+  const today = params.today || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  return {
+    staff:   getStaff(),
+    records: getRecords({ from: today, to: today }),
+    memos:   getAllMemos({ from: today, to: today }),
+  };
 }
 
 // ─── トリガー設定 ────────────────────────────────────
