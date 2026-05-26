@@ -587,15 +587,20 @@ async function startApp() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function loadStartupData() {
   const today = dateStr(new Date());
-  const data  = await api('getStartupData', { today });
-  staffCache = data.staff || [];
-  localStorage.setItem(STAFF_CACHE_KEY, JSON.stringify(staffCache));
-  renderStaffGrid();
-  todayRecs = data.records || [];
-  renderTodayStatus();
-  updateActionBtns();
-  todayMemosAll = {};
-  (data.memos || []).forEach(({ staff, memo }) => { todayMemosAll[staff] = memo; });
+  try {
+    const data = await api('getStartupData', { today });
+    staffCache = data.staff || [];
+    localStorage.setItem(STAFF_CACHE_KEY, JSON.stringify(staffCache));
+    renderStaffGrid();
+    todayRecs = data.records || [];
+    renderTodayStatus();
+    updateActionBtns();
+    todayMemosAll = {};
+    (data.memos || []).forEach(({ staff, memo }) => { todayMemosAll[staff] = memo; });
+  } catch {
+    // GASが古い場合は個別呼び出しにフォールバック
+    await Promise.all([loadStaff(), loadTodayRecs(), loadTodayMemos()]);
+  }
 }
 
 async function loadStaff() {
