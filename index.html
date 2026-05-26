@@ -786,7 +786,7 @@ async function pinKey(d) {
 
   await new Promise(r => setTimeout(r, 180));
   try {
-    const res = await api('checkPin', { pin: pinBuf });
+    const res = await api('checkPin', { pin: pinBuf }, 'POST');
     if (res.valid) {
       closeModal('pinModal');
       openAdmin();
