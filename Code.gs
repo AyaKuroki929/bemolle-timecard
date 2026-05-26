@@ -56,10 +56,11 @@ function handle(params, body) {
       case 'getStaff':          result = getStaff();                break;
       case 'addStaff':          result = addStaff(d);               break;
       case 'removeStaff':       result = removeStaff(d);            break;
-      case 'checkPin':          result = checkPin(params);           break;
+      case 'checkPin':          result = checkPin(d);                break;
       case 'changePin':         result = changePin(d);              break;
       case 'getStartupData':   result = getStartupData(params);   break;
       case 'setupTriggers':    result = setupTriggers();          break;
+      case 'keepWarm':         result = { ok: true };             break;
       default: throw new Error('Unknown action: ' + action);
     }
     return ok(result);
@@ -212,14 +213,28 @@ function getStartupData(params) {
   };
 }
 
+// ─── keep-warm（コールドスタート防止）────────────────
+function keepWarm() {
+  // 10分ごとのトリガーで呼ばれる。GASを起動状態に保つだけ。
+}
+
 // ─── トリガー設定 ────────────────────────────────────
 function setupTriggers() {
+  // checkForgottenClockOut: 毎日20時
   ScriptApp.getProjectTriggers()
     .filter(t => t.getHandlerFunction() === 'checkForgottenClockOut')
     .forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('checkForgottenClockOut')
     .timeBased().everyDays(1).atHour(20).create();
-  return { message: '毎日20時のトリガーを設定しました' };
+
+  // keepWarm: 10分ごと
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === 'keepWarm')
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('keepWarm')
+    .timeBased().everyMinutes(10).create();
+
+  return { message: 'トリガーを設定しました（退勤チェック20時・keepWarm10分毎）' };
 }
 
 // ─── 打刻記録 取得 ───────────────────────────────────
