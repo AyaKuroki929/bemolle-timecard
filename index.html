@@ -576,7 +576,7 @@ async function startApp() {
       await api('init', {}, 'POST');
       localStorage.setItem(INIT_DONE_KEY, '1');
     }
-    await loadStartupData();
+    await Promise.all([loadStaff(), loadTodayRecs(), loadTodayMemos()]);
   } catch {
     // エラーはshowToastで表示済み
   }
@@ -585,23 +585,6 @@ async function startApp() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  Staff
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-async function loadStartupData() {
-  const today = dateStr(new Date());
-  try {
-    const data = await api('getStartupData', { today });
-    staffCache = data.staff || [];
-    localStorage.setItem(STAFF_CACHE_KEY, JSON.stringify(staffCache));
-    renderStaffGrid();
-    todayRecs = data.records || [];
-    renderTodayStatus();
-    updateActionBtns();
-    todayMemosAll = {};
-    (data.memos || []).forEach(({ staff, memo }) => { todayMemosAll[staff] = memo; });
-  } catch {
-    // GASが古い場合は個別呼び出しにフォールバック
-    await Promise.all([loadStaff(), loadTodayRecs(), loadTodayMemos()]);
-  }
-}
 
 async function loadStaff() {
   staffCache = await api('getStaff');
