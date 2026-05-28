@@ -549,12 +549,13 @@ tick();
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  State
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-let staffCache     = null;
-let selectedStaff  = null;
-let todayRecs      = [];
-let memosCache     = {};
-let adminRecs      = [];
-let todayMemosAll  = {}; // staffName → memo（起動時に全員分プリフェッチ）
+let staffCache       = null;
+let selectedStaff    = null;
+let todayRecs        = [];
+let todayRecsLoaded  = false; // 今日の打刻データ読み込み完了フラグ
+let memosCache       = {};
+let adminRecs        = [];
+let todayMemosAll    = {}; // staffName → memo（起動時に全員分プリフェッチ）
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  Init
@@ -614,7 +615,8 @@ function selectStaff(name) {
 }
 
 function updateActionBtns() {
-  if (!selectedStaff) {
+  if (!selectedStaff || !todayRecsLoaded) {
+    // 未選択 or 打刻データ読み込み中は両方ロック（重複打刻防止）
     document.getElementById('btnIn').disabled  = true;
     document.getElementById('btnOut').disabled = true;
     return;
@@ -639,7 +641,10 @@ async function clockAction(type) {
     showToast(type === 'in'
       ? `☀ ${selectedStaff}さん　出勤打刻しました`
       : `🌙 ${selectedStaff}さん　退勤打刻しました`);
-  } catch { /* showToastで表示済み */ }
+  } catch {
+    // サーバーが拒否した場合、実状態と合わせるため再読み込み
+    loadTodayRecs();
+  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -648,7 +653,9 @@ async function clockAction(type) {
 async function loadTodayRecs() {
   const today = dateStr(new Date());
   todayRecs = await api('getRecords', { from: today, to: today });
+  todayRecsLoaded = true;
   renderTodayStatus();
+  updateActionBtns();
 }
 
 function renderTodayStatus() {

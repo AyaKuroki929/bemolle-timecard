@@ -122,6 +122,27 @@ function sh(name) {
 
 // ─── 打刻 ────────────────────────────────────────────
 function clockAction(d) {
+  // 重複打刻チェック（サーバー側絶対防御）
+  const tz    = Session.getScriptTimeZone();
+  const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const rows  = sh(SH_RECORDS).getDataRange().getValues();
+  const todayRecsForStaff = rows.slice(1)
+    .filter(r => r[1] === d.staff && tsStr(r[3]).slice(0, 10) === today)
+    .sort((a, b) => tsStr(a[3]).localeCompare(tsStr(b[3])));
+  const lastType = todayRecsForStaff.length > 0
+    ? todayRecsForStaff[todayRecsForStaff.length - 1][2]
+    : null;
+
+  if (d.type === 'in' && lastType === 'in') {
+    throw new Error('既に出勤打刻されています');
+  }
+  if (d.type === 'in' && lastType === 'out') {
+    throw new Error('本日は既に退勤打刻されています');
+  }
+  if (d.type === 'out' && lastType !== 'in') {
+    throw new Error('出勤打刻されていません');
+  }
+
   const id        = Date.now().toString();
   const timestamp = new Date().toISOString();
   sh(SH_RECORDS).appendRow([id, d.staff, d.type, timestamp]);
