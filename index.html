@@ -95,6 +95,41 @@
     /* ── Main ── */
     .main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 20px 80px; gap: 28px; }
 
+    /* ── Selected banner ── */
+    .selected-banner {
+      width: 100%; max-width: 520px;
+      background: var(--primary); color: var(--white);
+      padding: 16px 24px; border-radius: 14px; text-align: center;
+      box-shadow: 0 4px 16px rgba(196,151,122,0.35);
+      display: none; flex-direction: column; gap: 4px;
+    }
+    .selected-banner.show { display: flex; }
+    .selected-banner-label { font-size: 12px; opacity: 0.85; letter-spacing: 0.12em; }
+    .selected-banner-name { font-size: 28px; font-weight: 700; letter-spacing: 0.04em; }
+
+    /* ── Clock success overlay ── */
+    .clock-success {
+      position: fixed; inset: 0;
+      background: rgba(253,248,244,0.97);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 9999; opacity: 0; pointer-events: none;
+      transition: opacity 0.25s;
+    }
+    .clock-success.show { opacity: 1; }
+    .clock-success-icon {
+      width: 140px; height: 140px; border-radius: 50%;
+      background: var(--success); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 90px; margin-bottom: 28px;
+      box-shadow: 0 12px 40px rgba(125,184,143,0.4);
+    }
+    .clock-success-icon.out { background: var(--danger); box-shadow: 0 12px 40px rgba(217,112,112,0.4); }
+    .clock-success.show .clock-success-icon { animation: pop 0.45s cubic-bezier(0.34,1.56,0.64,1); }
+    @keyframes pop { 0% { transform: scale(0); } 60% { transform: scale(1.1); } 100% { transform: scale(1); } }
+    .clock-success-name { font-size: 32px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .clock-success-type { font-size: 22px; color: var(--text-muted); margin-bottom: 14px; letter-spacing: 0.05em; }
+    .clock-success-time { font-size: 52px; font-weight: 200; font-variant-numeric: tabular-nums; color: var(--primary-dark); }
+
     /* ── Staff grid ── */
     .section-label { font-size: 11px; color: var(--text-muted); letter-spacing: 0.1em; text-align: center; margin-bottom: 12px; }
     .staff-section, .action-section, .today-status, .memo-section { width: 100%; max-width: 520px; }
@@ -305,6 +340,11 @@
       <div class="staff-grid" id="staffGrid"></div>
     </div>
 
+    <div class="selected-banner" id="selectedBanner">
+      <div class="selected-banner-label">▶ 操作中</div>
+      <div class="selected-banner-name"><span id="selectedBannerName"></span> さん</div>
+    </div>
+
     <div class="action-section">
       <div class="action-buttons">
         <button class="action-btn btn-in"  id="btnIn"  disabled onclick="clockAction('in')">
@@ -337,6 +377,14 @@
 
 <!-- Toast -->
 <div class="toast" id="toast"></div>
+
+<!-- Clock success overlay -->
+<div class="clock-success" id="clockSuccess">
+  <div class="clock-success-icon" id="clockSuccessIcon">✓</div>
+  <div class="clock-success-name" id="clockSuccessName"></div>
+  <div class="clock-success-type" id="clockSuccessType"></div>
+  <div class="clock-success-time" id="clockSuccessTime"></div>
+</div>
 
 <!-- Admin trigger -->
 <button class="admin-trigger" id="adminTrigger" style="display:none;" onclick="openAdminPin()" title="管理者">⚙</button>
@@ -615,6 +663,17 @@ function selectStaff(name) {
   updateActionBtns();
   renderTodayStatus();
   loadStaffMemo(name);
+  updateSelectedBanner();
+}
+
+function updateSelectedBanner() {
+  const banner = document.getElementById('selectedBanner');
+  if (selectedStaff) {
+    document.getElementById('selectedBannerName').textContent = selectedStaff;
+    banner.classList.add('show');
+  } else {
+    banner.classList.remove('show');
+  }
 }
 
 function updateActionBtns() {
@@ -641,13 +700,27 @@ async function clockAction(type) {
     todayRecs.push(rec);
     renderTodayStatus();
     updateActionBtns();
-    showToast(type === 'in'
-      ? `☀ ${selectedStaff}さん　出勤打刻しました`
-      : `🌙 ${selectedStaff}さん　退勤打刻しました`);
+    showClockSuccess(selectedStaff, type, rec.timestamp);
   } catch {
     // サーバーが拒否した場合、実状態と合わせるため再読み込み
     loadTodayRecs();
   }
+}
+
+let clockSuccessTimer;
+function showClockSuccess(staff, type, timestamp) {
+  const overlay = document.getElementById('clockSuccess');
+  const icon    = document.getElementById('clockSuccessIcon');
+  const d       = new Date(timestamp);
+  document.getElementById('clockSuccessName').textContent = staff + ' さん';
+  document.getElementById('clockSuccessType').textContent = type === 'in' ? '☀ 出勤打刻 完了' : '🌙 退勤打刻 完了';
+  document.getElementById('clockSuccessTime').textContent =
+    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  icon.classList.toggle('out', type === 'out');
+  icon.textContent = '✓';
+  overlay.classList.add('show');
+  clearTimeout(clockSuccessTimer);
+  clockSuccessTimer = setTimeout(() => overlay.classList.remove('show'), 3000);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1161,7 +1234,7 @@ async function addStaff() {
 async function removeStaff(name) {
   if (!confirm(`「${name}」を削除しますか？（打刻記録は残ります）`)) return;
   await api('removeStaff', { name }, 'POST');
-  if (selectedStaff === name) { selectedStaff = null; updateActionBtns(); renderTodayStatus(); }
+  if (selectedStaff === name) { selectedStaff = null; updateActionBtns(); renderTodayStatus(); updateSelectedBanner(); }
   await loadStaff();
   renderStaffListAdmin();
 }
