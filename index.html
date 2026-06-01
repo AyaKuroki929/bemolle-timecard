@@ -378,6 +378,34 @@
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
+<!-- Record edit/add modal -->
+<div class="modal-overlay" id="recordModal" style="display:none;" onclick="handleOverlay(event,'recordModal')">
+  <div class="modal" style="max-width:380px;">
+    <div class="modal-title" id="recordModalTitle">打刻を追加</div>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;letter-spacing:0.08em;">スタッフ</div>
+        <select class="text-input" id="recordStaff"></select>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;letter-spacing:0.08em;">日付・時刻</div>
+        <input type="datetime-local" class="text-input" id="recordDateTime">
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;letter-spacing:0.08em;">種別</div>
+        <select class="text-input" id="recordType">
+          <option value="in">出勤</option>
+          <option value="out">退勤</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;padding-top:14px;border-top:1px solid var(--border);">
+      <button class="btn btn-secondary" onclick="closeModal('recordModal')">キャンセル</button>
+      <button class="btn btn-primary" onclick="saveRecord()">保存</button>
+    </div>
+  </div>
+</div>
+
 <!-- Clock success overlay -->
 <div class="clock-success" id="clockSuccess">
   <div class="clock-success-icon" id="clockSuccessIcon">✓</div>
@@ -436,6 +464,7 @@
         <span>〜</span>
         <input type="date" class="date-input" id="filterTo" onchange="renderRecords()">
         <button class="btn btn-secondary" style="font-size:12px;padding:7px 11px;" onclick="setThisMonth()">今月</button>
+        <button class="btn btn-primary" style="font-size:12px;padding:7px 11px;margin-left:auto;" onclick="openAddRecord()">+ 打刻を追加</button>
       </div>
       <div class="table-wrap">
         <table>
@@ -930,8 +959,12 @@ async function renderRecords() {
         return `<tr>
           <td>${dateStr(dt)}</td><td>${formatTime(dt)}</td>
           <td>${r.staff}</td><td>${badge}</td>
-          <td><button onclick="deleteRecord('${r.id}')"
-            style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:17px;">✕</button></td>
+          <td style="white-space:nowrap;">
+            <button onclick="openEditRecord('${r.id}','${r.timestamp}')"
+              style="background:none;border:none;color:var(--primary-dark);cursor:pointer;font-size:16px;margin-right:4px;">✏</button>
+            <button onclick="deleteRecord('${r.id}')"
+              style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:17px;">✕</button>
+          </td>
         </tr>`;
       }).join('');
     }
@@ -962,6 +995,61 @@ async function deleteRecord(id) {
   if (!confirm('この記録を削除しますか？')) return;
   await api('deleteRecord', { id }, 'POST');
   renderRecords();
+  if (selectedStaff) loadTodayRecs();
+}
+
+// 打刻 編集/追加 モーダル
+let editingRecordId = null;
+
+function openAddRecord() {
+  editingRecordId = null;
+  document.getElementById('recordModalTitle').textContent = '打刻を追加';
+  const staffSel = document.getElementById('recordStaff');
+  staffSel.innerHTML = (staffCache || []).map(s => `<option value="${s}">${s}</option>`).join('');
+  staffSel.disabled = false;
+  document.getElementById('recordType').disabled = false;
+  const now = new Date();
+  document.getElementById('recordDateTime').value =
+    `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  document.getElementById('recordType').value = 'in';
+  document.getElementById('recordModal').style.display = 'flex';
+}
+
+function openEditRecord(id, timestamp) {
+  editingRecordId = id;
+  const rec = adminRecs.find(r => r.id === id);
+  if (!rec) { showToast('記録が見つかりません'); return; }
+  document.getElementById('recordModalTitle').textContent = '打刻時刻を修正';
+  const staffSel = document.getElementById('recordStaff');
+  staffSel.innerHTML = `<option value="${rec.staff}">${rec.staff}</option>`;
+  staffSel.disabled = true;
+  document.getElementById('recordType').value = rec.type;
+  document.getElementById('recordType').disabled = true;
+  const d = new Date(timestamp);
+  document.getElementById('recordDateTime').value =
+    `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  document.getElementById('recordModal').style.display = 'flex';
+}
+
+async function saveRecord() {
+  const dtLocal = document.getElementById('recordDateTime').value;
+  if (!dtLocal) { showToast('日付・時刻を入力してください'); return; }
+  const iso = new Date(dtLocal).toISOString();
+  try {
+    if (editingRecordId) {
+      await api('updateRecordTimestamp', { id: editingRecordId, timestamp: iso }, 'POST');
+      showToast('時刻を修正しました');
+    } else {
+      const staff = document.getElementById('recordStaff').value;
+      const type  = document.getElementById('recordType').value;
+      if (!staff) { showToast('スタッフを選択してください'); return; }
+      await api('adminClockAction', { staff, type, timestamp: iso }, 'POST');
+      showToast(`${staff}さんの${type === 'in' ? '出勤' : '退勤'}を追加しました`);
+    }
+    closeModal('recordModal');
+    renderRecords();
+    if (selectedStaff) loadTodayRecs();
+  } catch { /* showToast表示済み */ }
 }
 
 async function deleteMemo(date, staff) {

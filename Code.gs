@@ -47,6 +47,8 @@ function handle(params, body) {
       case 'clockAction':       result = clockAction(d);            break;
       case 'getRecords':        result = getRecords(params);        break;
       case 'deleteRecord':      result = deleteRecord(d);           break;
+      case 'updateRecordTimestamp': result = updateRecordTimestamp(d); break;
+      case 'adminClockAction':  result = adminClockAction(d);       break;
       case 'clearRecords':      result = clearRecords();            break;
       case 'getMemos':          result = getMemos(params);          break;
       case 'getAllMemos':        result = getAllMemos(params);       break;
@@ -294,6 +296,31 @@ function clearRecords() {
   refreshNakataSheet();
   refreshTakeuchiSheet();
   return { cleared: true };
+}
+
+// ─── 打刻時刻の修正（管理者操作）───────────────────
+function updateRecordTimestamp(d) {
+  const sheet = sh(SH_RECORDS);
+  const rows  = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][0].toString() === d.id.toString()) {
+      sheet.getRange(i + 1, 4).setValue(d.timestamp);
+      const staffName = rows[i][1];
+      if (staffName === NAKATA_NAME)   refreshNakataSheet();
+      if (staffName === TAKEUCHI_NAME) refreshTakeuchiSheet();
+      return { updated: true, id: d.id, timestamp: d.timestamp };
+    }
+  }
+  return { updated: false };
+}
+
+// ─── 代理打刻（管理者操作・重複チェック無効）─────────
+function adminClockAction(d) {
+  const id = Date.now().toString();
+  sh(SH_RECORDS).appendRow([id, d.staff, d.type, d.timestamp]);
+  if (d.staff === NAKATA_NAME)   refreshNakataSheet();
+  if (d.staff === TAKEUCHI_NAME) refreshTakeuchiSheet();
+  return { id, staff: d.staff, type: d.type, timestamp: d.timestamp };
 }
 
 // ─── 中田有加 月次シート 自動更新 ────────────────────
