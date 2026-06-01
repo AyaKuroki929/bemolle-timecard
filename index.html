@@ -763,6 +763,20 @@ async function loadTodayRecs() {
   updateActionBtns();
 }
 
+// タブ復帰時に自動でデータ更新（直近10秒以内の再呼び出しは抑制）
+let lastAutoRefresh = 0;
+function autoRefreshOnFocus() {
+  if (document.hidden) return;
+  const now = Date.now();
+  if (now - lastAutoRefresh < 10000) return;
+  lastAutoRefresh = now;
+  loadTodayRecs();
+  loadTodayMemos();
+}
+document.addEventListener('visibilitychange', autoRefreshOnFocus);
+window.addEventListener('focus', autoRefreshOnFocus);
+window.addEventListener('pageshow', autoRefreshOnFocus);
+
 function renderTodayStatus() {
   const box = document.getElementById('todayStatus');
   if (!selectedStaff) { box.style.display = 'none'; return; }
