@@ -959,11 +959,11 @@ async function renderRecords() {
         return `<tr>
           <td>${dateStr(dt)}</td><td>${formatTime(dt)}</td>
           <td>${r.staff}</td><td>${badge}</td>
-          <td style="white-space:nowrap;">
+          <td style="white-space:nowrap;text-align:right;">
             <button onclick="openEditRecord('${r.id}','${r.timestamp}')"
-              style="background:none;border:none;color:var(--primary-dark);cursor:pointer;font-size:16px;margin-right:4px;">✏</button>
+              style="background:var(--primary-light);border:none;color:var(--primary-dark);cursor:pointer;font-size:16px;padding:6px 10px;margin-right:6px;border-radius:6px;min-width:34px;min-height:34px;">✏</button>
             <button onclick="deleteRecord('${r.id}')"
-              style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:17px;">✕</button>
+              style="background:#fde8e8;border:none;color:var(--danger);cursor:pointer;font-size:16px;padding:6px 10px;border-radius:6px;min-width:34px;min-height:34px;">✕</button>
           </td>
         </tr>`;
       }).join('');
