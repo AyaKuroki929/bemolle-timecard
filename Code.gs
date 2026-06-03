@@ -129,7 +129,7 @@ function clockAction(d) {
   const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
   const rows  = sh(SH_RECORDS).getDataRange().getValues();
   const todayRecsForStaff = rows.slice(1)
-    .filter(r => r[1] === d.staff && tsStr(r[3]).slice(0, 10) === today)
+    .filter(r => r[1] === d.staff && Utilities.formatDate(new Date(tsStr(r[3])), tz, 'yyyy-MM-dd') === today)
     .sort((a, b) => tsStr(a[3]).localeCompare(tsStr(b[3])));
   const lastType = todayRecsForStaff.length > 0
     ? todayRecsForStaff[todayRecsForStaff.length - 1][2]
@@ -265,12 +265,14 @@ function getRecords(params) {
   const rows = sh(SH_RECORDS).getDataRange().getValues();
   if (rows.length <= 1) return [];
 
+  const tz = Session.getScriptTimeZone();
+
   let recs = rows.slice(1)
     .map(r => ({ id: r[0].toString(), staff: r[1], type: r[2], timestamp: tsStr(r[3]) }))
     .filter(r => r.id && r.staff && r.timestamp);
 
-  if (params.from) recs = recs.filter(r => r.timestamp.slice(0,10) >= params.from);
-  if (params.to)   recs = recs.filter(r => r.timestamp.slice(0,10) <= params.to);
+  if (params.from) recs = recs.filter(r => Utilities.formatDate(new Date(r.timestamp), tz, 'yyyy-MM-dd') >= params.from);
+  if (params.to)   recs = recs.filter(r => Utilities.formatDate(new Date(r.timestamp), tz, 'yyyy-MM-dd') <= params.to);
   return recs;
 }
 
@@ -347,14 +349,14 @@ function refreshNakataSheet() {
     });
   }
 
-  // 打刻記録から当月分を集計
+  // 打刻記録から当月分を集計（JST基準で日付判定）
   const recSheet = ss.getSheetByName(SH_RECORDS);
   const dayMap   = {};
   if (recSheet) {
     recSheet.getDataRange().getValues().slice(1).forEach(r => {
       if (r[1] !== NAKATA_NAME || !r[3]) return;
       const ts   = tsStr(r[3]);
-      const date = ts.slice(0, 10);
+      const date = Utilities.formatDate(new Date(ts), tz, 'yyyy-MM-dd');
       if (date.slice(0, 7) !== currentMonth) return;
       if (!dayMap[date]) dayMap[date] = { in: null, out: null };
       if (r[2] === 'in'  && !dayMap[date].in)  dayMap[date].in  = ts;
@@ -393,14 +395,14 @@ function refreshTakeuchiSheet() {
     tkSh.appendRow(['日付', '出勤', '退勤', '勤務時間', '実働時間（休憩1.5h引き）']);
   }
 
-  // 打刻記録から当月分を集計
+  // 打刻記録から当月分を集計（JST基準で日付判定）
   const recSheet = ss.getSheetByName(SH_RECORDS);
   const dayMap   = {};
   if (recSheet) {
     recSheet.getDataRange().getValues().slice(1).forEach(r => {
       if (r[1] !== TAKEUCHI_NAME || !r[3]) return;
       const ts   = tsStr(r[3]);
-      const date = ts.slice(0, 10);
+      const date = Utilities.formatDate(new Date(ts), tz, 'yyyy-MM-dd');
       if (date.slice(0, 7) !== currentMonth) return;
       if (!dayMap[date]) dayMap[date] = { in: null, out: null };
       if (r[2] === 'in'  && !dayMap[date].in)  dayMap[date].in  = ts;

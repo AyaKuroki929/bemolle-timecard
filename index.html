@@ -713,7 +713,7 @@ function updateActionBtns() {
     return;
   }
   const today = dateStr(new Date());
-  const recs = todayRecs.filter(r => r.staff === selectedStaff && r.timestamp.slice(0,10) === today);
+  const recs = todayRecs.filter(r => r.staff === selectedStaff && jstDateOf(r.timestamp) === today);
   const lastType = recs.length > 0 ? recs[recs.length - 1].type : null;
   document.getElementById('btnIn').disabled  = lastType === 'in' || lastType === 'out';
   document.getElementById('btnOut').disabled = lastType !== 'in';
@@ -756,8 +756,11 @@ function showClockSuccess(staff, type, timestamp) {
 //  Today records
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function loadTodayRecs() {
-  const today = dateStr(new Date());
-  todayRecs = await api('getRecords', { from: today, to: today });
+  // 日付境界の問題回避のため、昨日〜明日の3日分を取得し、クライアント側でJST日付フィルタする
+  const now = new Date();
+  const from = dateStr(new Date(now.getTime() - 86400000));
+  const to   = dateStr(new Date(now.getTime() + 86400000));
+  todayRecs = await api('getRecords', { from, to });
   todayRecsLoaded = true;
   renderTodayStatus();
   updateActionBtns();
@@ -783,7 +786,7 @@ function renderTodayStatus() {
 
   const today = dateStr(new Date());
   const recs  = todayRecs
-    .filter(r => r.staff === selectedStaff && r.timestamp.slice(0,10) === today)
+    .filter(r => r.staff === selectedStaff && jstDateOf(r.timestamp) === today)
     .slice().reverse();
 
   if (recs.length === 0) { box.style.display = 'none'; return; }
@@ -1373,6 +1376,8 @@ function pad(n)        { return String(n).padStart(2,'0'); }
 function dateStr(d)    { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
 function formatTime(d) { return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
 function fmtDur(mins)  { return `${Math.floor(mins/60)}時間${pad(mins%60)}分`; }
+// タイムスタンプ（UTC ISO）から JST日付文字列を返す
+function jstDateOf(timestamp) { return dateStr(new Date(timestamp)); }
 
 function download(content, filename, mime) {
   const url = URL.createObjectURL(new Blob([content], {type: mime}));
@@ -1385,7 +1390,7 @@ function buildDayMap(recs, staffFilter) {
     ? recs.filter(r => r.staff === staffFilter) : recs;
   const map = {};
   filtered.forEach(r => {
-    const date = r.timestamp.slice(0,10);
+    const date = jstDateOf(r.timestamp);
     if (!map[r.staff]) map[r.staff] = {};
     if (!map[r.staff][date]) map[r.staff][date] = {in:null, out:null};
     const existing = map[r.staff][date][r.type];
