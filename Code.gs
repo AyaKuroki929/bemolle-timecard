@@ -383,7 +383,6 @@ function refreshNakataSheet() {
 
 // ─── 竹内美佳 月次シート 自動更新 ────────────────────
 // シート名: "竹内美佳_YYYY-MM"、D列は勤務時間（H:mm）
-// メモに「休憩なし」が含まれる日は -90分しない（実働 = 勤務時間）
 function refreshTakeuchiSheet() {
   const ss           = SpreadsheetApp.getActiveSpreadsheet();
   const sheetName    = takeuchiSheetName();
@@ -394,17 +393,6 @@ function refreshTakeuchiSheet() {
   if (!tkSh) {
     tkSh = ss.insertSheet(sheetName);
     tkSh.appendRow(['日付', '出勤', '退勤', '勤務時間', '実働時間（休憩1.5h引き）']);
-  }
-
-  // 休憩なしフラグ読み込み（メモに「休憩なし」を含む日）
-  const memoSheet = ss.getSheetByName(SH_MEMOS);
-  const noBreakDates = new Set();
-  if (memoSheet) {
-    memoSheet.getDataRange().getValues().slice(1).forEach(r => {
-      if (r[0] && r[1] === TAKEUCHI_NAME && r[2] && r[2].toString().includes('休憩なし')) {
-        noBreakDates.add(r[0].toString());
-      }
-    });
   }
 
   // 打刻記録から当月分を集計（JST基準で日付判定）
@@ -447,8 +435,7 @@ function refreshTakeuchiSheet() {
       const mins = Math.round((new Date(outTs) - new Date(inTs)) / 60000);
       if (mins > 0) {
         duration = Math.floor(mins / 60) + ':' + String(mins % 60).padStart(2, '0');
-        const breakMins = noBreakDates.has(date) ? 0 : 90;
-        const actualMins = mins - breakMins;
+        const actualMins = mins - 90; // 休憩1時間30分を引く
         if (actualMins > 0) {
           actual = Math.floor(actualMins / 60) + ':' + String(actualMins % 60).padStart(2, '0');
         }
@@ -530,14 +517,12 @@ function saveMemo(d) {
       } else {
         sheet.deleteRow(i + 1);
       }
-      if (d.staff === NAKATA_NAME)   refreshNakataSheet();
-      if (d.staff === TAKEUCHI_NAME) refreshTakeuchiSheet();
+      if (d.staff === NAKATA_NAME) refreshNakataSheet();
       return { saved: true };
     }
   }
   if (d.text && d.text.trim()) sheet.appendRow([d.date, d.staff, d.text]);
-  if (d.staff === NAKATA_NAME)   refreshNakataSheet();
-  if (d.staff === TAKEUCHI_NAME) refreshTakeuchiSheet();
+  if (d.staff === NAKATA_NAME) refreshNakataSheet();
   return { saved: true };
 }
 

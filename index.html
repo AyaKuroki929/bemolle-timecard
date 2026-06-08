@@ -1234,8 +1234,7 @@ async function genLastMonthPDF() {
     const rows = allDates.map(date => {
       const times = days[date] || {in:null,out:null};
       const memoEntry = Array.isArray(memos) ? memos.find(m => m.date === date && m.staff === staffName) : null;
-      const memoRaw = memoEntry ? memoEntry.memo : '';
-      const memo  = memoRaw.replace(/</g,'&lt;').replace(/\n/g,'<br>');
+      const memo  = (memoEntry ? memoEntry.memo : '').replace(/</g,'&lt;').replace(/\n/g,'<br>');
       const allowEntry = Array.isArray(allowances) ? allowances.find(a => a.date === date && a.staff === staffName) : null;
       const allowAmt = allowEntry ? allowEntry.amount : '';
       if (allowAmt !== '' && !isNaN(Number(String(allowAmt).replace(/,/g,'')))) {
@@ -1257,13 +1256,7 @@ async function genLastMonthPDF() {
         const mins = Math.round((new Date(times.out)-new Date(effectiveInTs))/60000);
         if (mins>0) {
           totalMin+=mins; workDays++; dur=fmtDur(mins);
-          if (!hasAllowance) {
-            // メモに「休憩なし」が含まれる日は -90分しない
-            const noBreak = memoRaw.includes('休憩なし');
-            const breakMins = noBreak ? 0 : 90;
-            const am = mins - breakMins;
-            if (am > 0) { totalActualMin += am; actualDur = fmtDur(am); }
-          }
+          if (!hasAllowance) { const am=mins-90; if(am>0){totalActualMin+=am; actualDur=fmtDur(am);} }
         }
       }
       const d = new Date(date+'T00:00:00');
