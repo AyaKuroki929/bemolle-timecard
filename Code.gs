@@ -433,6 +433,15 @@ function refreshTakeuchiSheet() {
       }
     }
 
+    // 2026-06-05 特別ルール: 12:30 スタートとして計算（6月限定の一時ルール）
+    if (inTs && date === '2026-06-05') {
+      const inHM = Utilities.formatDate(new Date(inTs), tz, 'HH:mm');
+      if (inHM < '12:30') {
+        // JST 12:30 = UTC 03:30 同日
+        inTs = date + 'T03:30:00.000Z';
+      }
+    }
+
     const inTime  = inTs  ? Utilities.formatDate(new Date(inTs),  tz, 'HH:mm') : '';
     const outTime = outTs ? Utilities.formatDate(new Date(outTs), tz, 'HH:mm') : '';
     let duration = '';
