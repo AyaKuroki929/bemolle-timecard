@@ -98,7 +98,7 @@ function initSheets() {
   // 今月の個人シートを作成
   const nSh = getOrCreate(nakataSheetName(),   ['日付', '出勤', '退勤', '日当(円)']);
   nSh.getRange('D2:D200').setNumberFormat('¥#,##0');
-  getOrCreate(takeuchiSheetName(), ['日付', '出勤', '退勤', '勤務時間', '実働時間（休憩1.5h引き）']);
+  getOrCreate(takeuchiSheetName(), ['日付', '打刻時刻', '出勤', '退勤', '勤務時間', '実働時間（休憩1.5h引き）']);
 
   const staffSh = getOrCreate(SH_STAFF, ['name']);
   if (staffSh.getLastRow() <= 1) {
@@ -389,10 +389,14 @@ function refreshTakeuchiSheet() {
   const currentMonth = monthKey();
   const tz           = Session.getScriptTimeZone();
 
+  const HEADERS = ['日付', '打刻時刻', '出勤', '退勤', '勤務時間', '実働時間（休憩1.5h引き）'];
   let tkSh = ss.getSheetByName(sheetName);
   if (!tkSh) {
     tkSh = ss.insertSheet(sheetName);
-    tkSh.appendRow(['日付', '出勤', '退勤', '勤務時間', '実働時間（休憩1.5h引き）']);
+    tkSh.appendRow(HEADERS);
+  } else {
+    // ヘッダーを最新に揃える（既存シートで打刻時刻列が無い場合に対応）
+    tkSh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
   }
 
   // 打刻記録から当月分を集計（JST基準で日付判定）
@@ -416,9 +420,11 @@ function refreshTakeuchiSheet() {
   if (dates.length === 0) return;
 
   const rows = dates.map(date => {
-    let { in: inTs, out: outTs } = dayMap[date];
+    const { in: rawInTs, out: outTs } = dayMap[date];
+    const rawInTime = rawInTs ? Utilities.formatDate(new Date(rawInTs), tz, 'HH:mm') : '';
 
     // 2026年6月に限り、9時前出勤は9時スタートとして計算
+    let inTs = rawInTs;
     if (inTs && date.slice(0, 7) === '2026-06') {
       const inHM = Utilities.formatDate(new Date(inTs), tz, 'HH:mm');
       if (inHM < '09:00') {
@@ -441,10 +447,10 @@ function refreshTakeuchiSheet() {
         }
       }
     }
-    return [date, inTime, outTime, duration, actual];
+    return [date, rawInTime, inTime, outTime, duration, actual];
   });
 
-  tkSh.getRange(2, 1, rows.length, 5).setValues(rows);
+  tkSh.getRange(2, 1, rows.length, 6).setValues(rows);
 }
 
 // ISO文字列 or Date オブジェクトを ISO文字列に統一
