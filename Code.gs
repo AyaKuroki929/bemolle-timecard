@@ -103,7 +103,7 @@ function initSheets() {
   const staffSh = getOrCreate(SH_STAFF, ['name']);
   if (staffSh.getLastRow() <= 1) {
     staffSh.appendRow([NAKATA_NAME]);
-    staffSh.appendRow([TAKEUCHI_NAME]);
+    // 竹内美佳は2026-07-01より運用対象外（新規登録しない／過去データは保持）
   }
 
   const setsSh = getOrCreate(SH_SETTINGS, ['key', 'value']);
