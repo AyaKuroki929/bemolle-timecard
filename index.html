@@ -581,8 +581,11 @@ function setLoading(on) {
   document.getElementById('loadingOverlay').classList.toggle('hidden', loadingCount === 0);
 }
 
+let adminPin = null;  // PIN認証成功後に保持し、管理系APIへ自動添付（サーバー側門番用・2026-07-13）
+
 async function api(action, data = {}, method = 'GET') {
   setLoading(true);
+  if (adminPin && data.pin === undefined) data = { pin: adminPin, ...data };
   try {
     let res;
     if (method === 'GET') {
@@ -902,6 +905,7 @@ async function pinKey(d) {
   try {
     const res = await api('checkPin', { pin: pinBuf }, 'POST');
     if (res.valid) {
+      adminPin = pinBuf;  // 以後の管理操作にサーバー側検証用として添付
       closeModal('pinModal');
       openAdmin();
     } else {

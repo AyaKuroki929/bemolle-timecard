@@ -37,10 +37,30 @@ function doPost(e) {
   return handle(e.parameter, body);
 }
 
+// ── 管理者PIN門番（2026-07-13追加）─────────────────────────────
+// このWebアプリのURLは誰でも到達できるため、危険なアクションはサーバー側で
+// PINを検証する（画面のPINモーダルは飾りで、直接APIを叩けば素通りだった）。
+// getRecords/getMemos/getAllMemos/clockAction/getStaff/checkPin/keepWarm は
+// スタッフ画面が使うため開放のまま。
+const ADMIN_ACTIONS = ['init','deleteRecord','updateRecordTimestamp','adminClockAction',
+  'clearRecords','addStaff','removeStaff','changePin','setupTriggers','getDailyAllowance'];
+
+function getStoredPin() {
+  const rows = sh(SH_SETTINGS).getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][0] === 'pin') return rows[i][1].toString();
+  }
+  return '1234';
+}
+
 function handle(params, body) {
   const d      = body || {};
   const action = params.action || d.action;
   try {
+    if (ADMIN_ACTIONS.indexOf(action) !== -1) {
+      const pin = ((d.pin != null ? d.pin : params.pin) || '').toString();
+      if (pin !== getStoredPin()) throw new Error('unauthorized');
+    }
     let result;
     switch (action) {
       case 'init':              result = initSheets();              break;
@@ -566,11 +586,7 @@ function removeStaff(d) {
 
 // ─── PIN ─────────────────────────────────────────────
 function checkPin(d) {
-  const rows = sh(SH_SETTINGS).getDataRange().getValues();
-  for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] === 'pin') return { valid: rows[i][1].toString() === d.pin };
-  }
-  return { valid: d.pin === '1234' };
+  return { valid: (d.pin || '').toString() === getStoredPin() };
 }
 
 function changePin(d) {

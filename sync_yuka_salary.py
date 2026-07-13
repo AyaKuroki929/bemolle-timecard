@@ -45,10 +45,14 @@ def fetch_allowances(month_key):
     last_day = calendar.monthrange(int(year), int(month))[1]
     to_date = f"{year}-{month}-{last_day:02d}"
 
+    pin = os.environ.get("TIMECARD_PIN", "")
+    if not pin:
+        raise RuntimeError("環境変数 TIMECARD_PIN が未設定です（~/.zshrc に export TIMECARD_PIN=管理者PIN を追加してください。2026-07-13からGAS側でPIN必須）")
     res = requests.get(GAS_URL, params={
         "action": "getDailyAllowance",
         "from": from_date,
         "to": to_date,
+        "pin": pin,
     }, timeout=30)
     data = res.json()
     if not data.get("ok"):
