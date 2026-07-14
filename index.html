@@ -584,7 +584,7 @@ function setLoading(on) {
 let adminPin = null;  // PIN認証成功後に保持し、管理系APIへ自動添付（サーバー側門番用・2026-07-13）
 
 // 2026-07-14 XSS対策（Sol敵対的レビュー#2）：画面に差し込む全ての値をエスケープする
-function escapeJs(v){ return String(v==null?'':v).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"').replace(/</g,'\\x3c'); }
+function escapeJs(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/\\/g,'&#92;'); }
 function escapeHtml(v) {
   return String(v == null ? '' : v)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
@@ -1034,7 +1034,7 @@ function openAddRecord() {
   editingRecordId = null;
   document.getElementById('recordModalTitle').textContent = '打刻を追加';
   const staffSel = document.getElementById('recordStaff');
-  staffSel.innerHTML = (staffCache || []).map(s => `<option value="${s}">${s}</option>`).join('');
+  staffSel.innerHTML = (staffCache || []).map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
   staffSel.disabled = false;
   document.getElementById('recordType').disabled = false;
   const now = new Date();
@@ -1050,7 +1050,7 @@ function openEditRecord(id, timestamp) {
   if (!rec) { showToast('記録が見つかりません'); return; }
   document.getElementById('recordModalTitle').textContent = '打刻時刻を修正';
   const staffSel = document.getElementById('recordStaff');
-  staffSel.innerHTML = `<option value="${rec.staff}">${rec.staff}</option>`;
+  staffSel.innerHTML = `<option value="${escapeHtml(rec.staff)}">${escapeHtml(rec.staff)}</option>`;
   staffSel.disabled = true;
   document.getElementById('recordType').value = rec.type;
   document.getElementById('recordType').disabled = true;
@@ -1124,7 +1124,7 @@ async function renderSummary() {
 
   const [y, mo] = month.split('-').map(Number);
   document.getElementById('printTitleSummary').textContent =
-    `月次勤務集計（${y}年${parseInt(mo)}月 / ${staffFilter}）`;
+    `月次勤務集計（${y}年${parseInt(mo)}月 / ${escapeHtml(staffFilter)}）`;
 
   try {
     const from = `${month}-01`;
@@ -1184,7 +1184,7 @@ function populateSummarySelectors() {
   const staffList = ['全員', ...(staffCache || [])];
   const ss2 = document.getElementById('summaryStaff');
   const cs  = ss2.value;
-  ss2.innerHTML = staffList.map(s => `<option value="${s}">${s}</option>`).join('');
+  ss2.innerHTML = staffList.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
   if (cs && staffList.includes(cs)) ss2.value = cs;
 }
 
@@ -1296,7 +1296,7 @@ async function genLastMonthPDF() {
         </div>
         <div style="text-align:right;font-size:13px;">
           <div style="margin-bottom:4px;"><span style="font-size:10px;color:#888;width:52px;display:inline-block;">対象月</span><strong>${year}年${mo}月</strong></div>
-          <div><span style="font-size:10px;color:#888;width:52px;display:inline-block;">スタッフ</span><strong>${staffName}</strong></div>
+          <div><span style="font-size:10px;color:#888;width:52px;display:inline-block;">スタッフ</span><strong>${escapeHtml(staffName)}</strong></div>
         </div>
       </div>
       <table>
