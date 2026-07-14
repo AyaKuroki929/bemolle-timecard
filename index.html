@@ -989,9 +989,9 @@ async function renderRecords() {
           <td>${dateStr(dt)}</td><td>${formatTime(dt)}</td>
           <td>${escapeHtml(r.staff)}</td><td>${badge}</td>
           <td style="white-space:nowrap;text-align:right;">
-            <button onclick="openEditRecord('${r.id}','${r.timestamp}')"
+            <button data-act="editRec" data-id="${escapeHtml(r.id)}" data-ts="${escapeHtml(r.timestamp)}"
               style="background:var(--primary-light);border:none;color:var(--primary-dark);cursor:pointer;font-size:16px;padding:6px 10px;margin-right:6px;border-radius:6px;min-width:34px;min-height:34px;">✏</button>
-            <button onclick="deleteRecord('${r.id}')"
+            <button data-act="delRec" data-id="${escapeHtml(r.id)}"
               style="background:#fde8e8;border:none;color:var(--danger);cursor:pointer;font-size:16px;padding:6px 10px;border-radius:6px;min-width:34px;min-height:34px;">✕</button>
           </td>
         </tr>`;
@@ -1015,7 +1015,7 @@ async function renderMemoList(from, to) {
       <div class="memo-date-tag">${escapeHtml(date)}</div>
       <div style="flex-shrink:0;width:64px;font-size:12px;color:var(--primary-dark);font-weight:600;">${escapeHtml(staff)}</div>
       <div class="memo-text-content">${escapeHtml(memo)}</div>
-      <button onclick="deleteMemo('${escapeJs(date)}','${escapeJs(staff)}')"
+      <button data-act="delMemo" data-date="${escapeHtml(date)}" data-staff="${escapeHtml(staff)}"
         style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:15px;flex-shrink:0;">✕</button>
     </div>`).join('');
 }
@@ -1341,7 +1341,7 @@ function renderStaffListAdmin() {
   list.innerHTML = staffCache.map((name, i) => `
     <div class="staff-list-item">
       <span>${escapeHtml(name)}</span>
-      <button class="del-btn" onclick="removeStaff('${escapeJs(name)}')">✕</button>
+      <button class="del-btn" data-act="delStaff" data-name="${escapeHtml(name)}">✕</button>
     </div>`).join('');
 }
 
@@ -1434,6 +1434,17 @@ if (API_URL) {
   document.getElementById('setupScreen').style.display = 'flex';
   document.getElementById('loadingOverlay').classList.add('hidden');
 }
+
+// 2026-07-14 XSS完全対策：onclickに値を埋めず、data属性＋イベント委譲で処理（属性内JS脱出を原理的に不可能に）data-act delegation
+document.addEventListener('click', function(ev){
+  const b = ev.target.closest('[data-act]'); if(!b) return;
+  const a = b.getAttribute('data-act');
+  if(a==='editRec')  openEditRecord(b.getAttribute('data-id'), b.getAttribute('data-ts'));
+  else if(a==='delRec')  deleteRecord(b.getAttribute('data-id'));
+  else if(a==='delMemo') deleteMemo(b.getAttribute('data-date'), b.getAttribute('data-staff'));
+  else if(a==='delStaff') removeStaff(b.getAttribute('data-name'));
+});
+
 </script>
 </body>
 </html>

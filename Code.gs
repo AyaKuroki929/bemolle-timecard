@@ -583,6 +583,7 @@ function getAllMemos(params) {
 function saveMemo(d) {
   // 2026-07-14 入力検証：登録済みスタッフのみ・本文長制限（未認証書き込み悪用の緩和）
   if (getStaff().indexOf(d.staff) === -1) throw new Error('unknown staff');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test((d.date||'').toString())) throw new Error('bad date');  // 2026-07-14 日付形式を強制(注入源の封鎖)
   if (d.text && d.text.toString().length > 1000) throw new Error('memo too long');
   const sheet = sh(SH_MEMOS);
   const rows  = sheet.getDataRange().getValues();
