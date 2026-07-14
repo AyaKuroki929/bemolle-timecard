@@ -583,6 +583,14 @@ function setLoading(on) {
 
 let adminPin = null;  // PIN認証成功後に保持し、管理系APIへ自動添付（サーバー側門番用・2026-07-13）
 
+// 2026-07-14 XSS対策（Sol敵対的レビュー#2）：画面に差し込む全ての値をエスケープする
+function escapeJs(v){ return String(v==null?'':v).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"').replace(/</g,'\\x3c'); }
+function escapeHtml(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 async function api(action, data = {}, method = 'GET') {
   setLoading(true);
   if (adminPin && data.pin === undefined) data = { pin: adminPin, ...data };
@@ -979,7 +987,7 @@ async function renderRecords() {
           : '<span class="status-badge badge-out">退勤</span>';
         return `<tr>
           <td>${dateStr(dt)}</td><td>${formatTime(dt)}</td>
-          <td>${r.staff}</td><td>${badge}</td>
+          <td>${escapeHtml(r.staff)}</td><td>${badge}</td>
           <td style="white-space:nowrap;text-align:right;">
             <button onclick="openEditRecord('${r.id}','${r.timestamp}')"
               style="background:var(--primary-light);border:none;color:var(--primary-dark);cursor:pointer;font-size:16px;padding:6px 10px;margin-right:6px;border-radius:6px;min-width:34px;min-height:34px;">✏</button>
@@ -1004,10 +1012,10 @@ async function renderMemoList(from, to) {
   }
   list.innerHTML = list_.map(({ date, staff, memo }) => `
     <div class="memo-list-item">
-      <div class="memo-date-tag">${date}</div>
-      <div style="flex-shrink:0;width:64px;font-size:12px;color:var(--primary-dark);font-weight:600;">${staff}</div>
-      <div class="memo-text-content">${memo.replace(/</g,'&lt;')}</div>
-      <button onclick="deleteMemo('${date}','${staff}')"
+      <div class="memo-date-tag">${escapeHtml(date)}</div>
+      <div style="flex-shrink:0;width:64px;font-size:12px;color:var(--primary-dark);font-weight:600;">${escapeHtml(staff)}</div>
+      <div class="memo-text-content">${escapeHtml(memo)}</div>
+      <button onclick="deleteMemo('${escapeJs(date)}','${escapeJs(staff)}')"
         style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:15px;flex-shrink:0;">✕</button>
     </div>`).join('');
 }
@@ -1144,11 +1152,11 @@ async function renderSummary() {
           const mins = Math.round((new Date(times.out) - new Date(times.in)) / 60000);
           if (mins > 0) { totalMin += mins; dur = fmtDur(mins); }
         }
-        return `<tr><td>${date}</td><td>${inT}</td><td>${outT}</td><td>${dur}</td></tr>`;
+        return `<tr><td>${escapeHtml(date)}</td><td>${inT}</td><td>${outT}</td><td>${dur}</td></tr>`;
       }).join('');
 
       html += `<div style="margin-bottom:20px;">
-        <div style="font-weight:700;margin-bottom:8px;color:var(--primary-dark);">${staff}</div>
+        <div style="font-weight:700;margin-bottom:8px;color:var(--primary-dark);">${escapeHtml(staff)}</div>
         <div class="table-wrap"><table>
           <thead><tr><th>日付</th><th>出勤</th><th>退勤</th><th>勤務時間</th></tr></thead>
           <tbody>${rows}</tbody>
@@ -1272,7 +1280,7 @@ async function genLastMonthPDF() {
         <td class="dc">${dayLabel}</td><td class="tc">${inT}</td>
         <td class="tc">${outT}</td><td class="tc">${dur}</td>
         ${fifthCol}
-        <td class="mc">${memo}</td></tr>`;
+        <td class="mc">${escapeHtml(memo)}</td></tr>`;
     }).join('');
 
     const th5 = hasAllowance ? '日当' : '実働時間';
@@ -1332,8 +1340,8 @@ function renderStaffListAdmin() {
   }
   list.innerHTML = staffCache.map((name, i) => `
     <div class="staff-list-item">
-      <span>${name}</span>
-      <button class="del-btn" onclick="removeStaff('${name}')">✕</button>
+      <span>${escapeHtml(name)}</span>
+      <button class="del-btn" onclick="removeStaff('${escapeJs(name)}')">✕</button>
     </div>`).join('');
 }
 
