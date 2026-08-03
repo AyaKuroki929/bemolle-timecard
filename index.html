@@ -581,24 +581,45 @@ function setLoading(on) {
   document.getElementById('loadingOverlay').classList.toggle('hidden', loadingCount === 0);
 }
 
-async function api(action, data = {}, method = 'GET') {
-  setLoading(true);
+async function _fetchGas(action, data, method) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
   try {
     let res;
     if (method === 'GET') {
       const p = new URLSearchParams({ action, ...data });
-      res = await fetch(`${API_URL}?${p}`, { redirect: 'follow' });
+      res = await fetch(`${API_URL}?${p}`, { redirect: 'follow', signal: controller.signal });
     } else {
       res = await fetch(API_URL, {
         method: 'POST', redirect: 'follow',
         body: JSON.stringify({ action, ...data }),
+        signal: controller.signal,
       });
     }
     const json = await res.json();
     if (!json.ok) throw new Error(json.error || 'APIエラー');
     return json.data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function api(action, data = {}, method = 'GET') {
+  setLoading(true);
+  try {
+    try {
+      return await _fetchGas(action, data, method);
+    } catch (firstErr) {
+      // タイムアウト・ネットワーク断のみ1.5秒後に1回リトライ（GASのコールドスタート対策）
+      if (firstErr.name === 'AbortError' || firstErr.name === 'TypeError') {
+        await new Promise(r => setTimeout(r, 1500));
+        return await _fetchGas(action, data, method);
+      }
+      throw firstErr;
+    }
   } catch (err) {
-    showToast('⚠ ' + err.message);
+    const msg = err.name === 'AbortError' ? '通信タイムアウトが続いています。ページを再読み込みしてください。' : err.message;
+    showToast('⚠ ' + msg);
     throw err;
   } finally {
     setLoading(false);
@@ -653,11 +674,34 @@ async function startApp() {
 
   try {
     if (!localStorage.getItem(INIT_DONE_KEY)) {
-      await api('init', {}, 'POST');
+      await api('init');
       localStorage.setItem(INIT_DONE_KEY, '1');
     }
-    await Promise.all([loadStaff(), loadTodayRecs(), loadTodayMemos()]);
-  } catch {}
+    // 1回のGETリクエストで全起動データを取得（iPad: 複数呼び出しによるタイムアウト積み重ねを回避）
+    const now   = new Date();
+    const today = dateStr(now);
+    const from  = dateStr(new Date(now.getTime() - 86400000));
+    const to    = dateStr(new Date(now.getTime() + 86400000));
+    const startup = await api('getStartupData', { today, from, to });
+
+    staffCache = startup.staff;
+    localStorage.setItem(STAFF_CACHE_KEY, JSON.stringify(staffCache));
+    renderStaffGrid();
+
+    todayRecs = startup.records;
+    todayRecsLoaded = true;
+    renderTodayStatus();
+    updateActionBtns();
+
+    todayMemosAll = {};
+    (startup.memos || []).forEach(({ staff, memo }) => { todayMemosAll[staff] = memo; });
+  } catch {
+    // 起動失敗時：スタッフグリッドに再読み込みボタンを表示（ボタンはロック維持で誤打刻を防ぐ）
+    if (!staffCache) {
+      document.getElementById('staffGrid').innerHTML =
+        '<div class="staff-grid-empty" style="cursor:pointer;" onclick="location.reload()">⚠ 読み込みに失敗しました<br><small>タップして再読み込み</small></div>';
+    }
+  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -768,13 +812,24 @@ async function loadTodayRecs() {
 
 // タブ復帰時に自動でデータ更新（直近10秒以内の再呼び出しは抑制）
 let lastAutoRefresh = 0;
-function autoRefreshOnFocus() {
+async function autoRefreshOnFocus() {
   if (document.hidden) return;
   const now = Date.now();
   if (now - lastAutoRefresh < 10000) return;
   lastAutoRefresh = now;
-  loadTodayRecs();
-  loadTodayMemos();
+  try {
+    const t     = new Date();
+    const today = dateStr(t);
+    const from  = dateStr(new Date(t.getTime() - 86400000));
+    const to    = dateStr(new Date(t.getTime() + 86400000));
+    const data  = await api('getStartupData', { today, from, to });
+    todayRecs = data.records;
+    todayRecsLoaded = true;
+    renderTodayStatus();
+    updateActionBtns();
+    todayMemosAll = {};
+    (data.memos || []).forEach(({ staff, memo }) => { todayMemosAll[staff] = memo; });
+  } catch {}
 }
 document.addEventListener('visibilitychange', autoRefreshOnFocus);
 window.addEventListener('focus', autoRefreshOnFocus);

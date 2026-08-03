@@ -228,10 +228,13 @@ function checkForgottenClockOut() {
 
 // ─── 起動データ一括取得（スタッフ＋今日の記録＋今日のメモ）────
 function getStartupData(params) {
-  const today = params.today || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const tz    = Session.getScriptTimeZone();
+  const today = params.today || Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const from  = params.from  || today;
+  const to    = params.to    || today;
   return {
     staff:   getStaff(),
-    records: getRecords({ from: today, to: today }),
+    records: getRecords({ from, to }),
     memos:   getAllMemos({ from: today, to: today }),
   };
 }
