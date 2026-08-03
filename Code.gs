@@ -37,10 +37,62 @@ function doPost(e) {
   return handle(e.parameter, body);
 }
 
+// ━━ セキュリティの前提と受容リスク（2026-07-14 Sol敵対的レビュー2巡の結論）━━
+//  この端末は「ログインなしの公開キオスク」。最も危険な保存型XSS(→管理者PIN窃取)は
+//  index.html側で全描画値エスケープにより封鎖済み。以下は"サロン運営上の現実的リスクは低い"
+//  として意図的に受容（対策するにはGoogleアカウント認証等の設計変更が必要・別途）：
+//   - clockActionは本人確認まではしない（キオゆえ他人になりすまし打刻は原理的に可能）
+//   - saveMemoは登録スタッフ名+文字数のみ検証（任意日メモの上書き/削除の余地）
+//   - 読み取り総当たり/PINロックのDoSの理論的余地
+//  管理者PINは1234以外に設定済み（初期値1234はinitSheets内のみ・実機は独自PIN）。
+
+// ── 管理者PIN門番（2026-07-13追加）─────────────────────────────
+// このWebアプリのURLは誰でも到達できるため、危険なアクションはサーバー側で
+// PINを検証する（画面のPINモーダルは飾りで、直接APIを叩けば素通りだった）。
+// getRecords/getMemos/getAllMemos/clockAction/getStaff/checkPin/keepWarm は
+// スタッフ画面が使うため開放のまま。
+const ADMIN_ACTIONS = ['init','deleteRecord','updateRecordTimestamp','adminClockAction',
+  'clearRecords','addStaff','removeStaff','changePin','setupTriggers','getDailyAllowance',
+  'deleteMemo','getStartupData'];  // 2026-07-14 Sol敵対的レビューで追加（管理専用の入れ忘れ）
+
+function getStoredPin() {
+  const rows = sh(SH_SETTINGS).getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][0] === 'pin') return rows[i][1].toString();
+  }
+  return '';  // 2026-07-14 既知の初期値1234を廃止。未設定時は空＝どのPINとも一致せず管理操作は全拒否(fail closed)
+}
+
+// 2026-07-14 リクエストのPINが正しいか（管理者か）。PIN未設定(空)なら常にfalse
+function isAdmin(params, d) {
+  const stored = getStoredPin();
+  if (!stored) return false;
+  const pin = ((d && d.pin != null ? d.pin : (params && params.pin)) || '').toString();
+  return pin === stored;
+}
+
+// 2026-07-14 PIN総当たり対策：連続失敗をCacheServiceで数え、一定回数でロック
+function pinRateGuard_(pin) {
+  const cache = CacheService.getScriptCache();
+  const stored = getStoredPin();
+  const failsKey = 'pin_fails';
+  var fails = Number(cache.get(failsKey) || 0);
+  if (fails >= 10) throw new Error('locked');  // 10回失敗で15分ロック
+  const ok = !!stored && pin.toString() === stored;
+  if (!ok) cache.put(failsKey, fails + 1, 900); else cache.remove(failsKey);
+  return ok;
+}
+
 function handle(params, body) {
   const d      = body || {};
   const action = params.action || d.action;
   try {
+    if (ADMIN_ACTIONS.indexOf(action) !== -1) {
+      const pin = ((d.pin != null ? d.pin : params.pin) || '').toString();
+      if (!pinRateGuard_(pin)) throw new Error('unauthorized');
+    }
+    // 2026-07-14 読み取り系(getRecords等)を非管理者は「今日」だけに制限するための判定
+    params.__admin = isAdmin(params, d);
     let result;
     switch (action) {
       case 'init':              result = initSheets();              break;
@@ -124,6 +176,9 @@ function sh(name) {
 
 // ─── 打刻 ────────────────────────────────────────────
 function clockAction(d) {
+  // 2026-07-14 入力検証：登録済みスタッフ名＋type厳格化（任意名の注入・XSS素材化を防ぐ）
+  if (getStaff().indexOf(d.staff) === -1) throw new Error('unknown staff');
+  if (d.type !== 'in' && d.type !== 'out') throw new Error('invalid type');
   // 重複打刻チェック（サーバー側絶対防御）
   const tz    = Session.getScriptTimeZone();
   const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
@@ -265,6 +320,7 @@ function setupTriggers() {
 
 // ─── 打刻記録 取得 ───────────────────────────────────
 function getRecords(params) {
+  if (!params.__admin) { const _t = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'); params.from = _t; params.to = _t; }  // 2026-07-14 非管理者は当日のみ(全期間漏洩防止)
   const rows = sh(SH_RECORDS).getDataRange().getValues();
   if (rows.length <= 1) return [];
 
@@ -495,6 +551,7 @@ function getDailyAllowance(params) {
 
 // ─── 日報メモ ────────────────────────────────────────
 function getMemos(params) {
+  if (!params.__admin) { const _t = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'); params.from = _t; params.to = _t; }  // 2026-07-14 非管理者は当日のみ
   const rows  = sh(SH_MEMOS).getDataRange().getValues();
   const memos = {};
   rows.slice(1).forEach(r => {
@@ -511,6 +568,7 @@ function getMemos(params) {
 }
 
 function getAllMemos(params) {
+  if (!params.__admin) { const _t = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'); params.from = _t; params.to = _t; }  // 2026-07-14 非管理者は当日のみ
   const rows = sh(SH_MEMOS).getDataRange().getValues();
   const list = [];
   rows.slice(1).forEach(r => {
@@ -526,6 +584,10 @@ function getAllMemos(params) {
 }
 
 function saveMemo(d) {
+  // 2026-07-14 入力検証：登録済みスタッフのみ・本文長制限（未認証書き込み悪用の緩和）
+  if (getStaff().indexOf(d.staff) === -1) throw new Error('unknown staff');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test((d.date||'').toString())) throw new Error('bad date');  // 2026-07-14 日付形式を強制(注入源の封鎖)
+  if (d.text && d.text.toString().length > 1000) throw new Error('memo too long');
   const sheet = sh(SH_MEMOS);
   const rows  = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
@@ -569,14 +631,13 @@ function removeStaff(d) {
 
 // ─── PIN ─────────────────────────────────────────────
 function checkPin(d) {
-  const rows = sh(SH_SETTINGS).getDataRange().getValues();
-  for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] === 'pin') return { valid: rows[i][1].toString() === d.pin };
-  }
-  return { valid: d.pin === '1234' };
+  return { valid: pinRateGuard_((d.pin || '').toString()) };  // 2026-07-14 総当たり対策のレートガード経由
 }
 
 function changePin(d) {
+  const np = (d.newPin || '').toString();
+  if (!/^[0-9]{4}$/.test(np)) throw new Error('新PINは4桁の数字にしてください');  // 2026-07-14 サーバー側検証
+  d = { newPin: np };
   const sheet = sh(SH_SETTINGS);
   const rows  = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {

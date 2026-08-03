@@ -581,6 +581,16 @@ function setLoading(on) {
   document.getElementById('loadingOverlay').classList.toggle('hidden', loadingCount === 0);
 }
 
+let adminPin = null;  // PIN認証成功後に保持し、管理系APIへ自動添付（サーバー側門番用・2026-07-13）
+
+// 2026-07-14 XSS対策（Sol敵対的レビュー#2）：画面に差し込む全ての値をエスケープする
+function escapeJs(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/\\/g,'&#92;'); }
+function escapeHtml(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 async function _fetchGas(action, data, method) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
@@ -606,6 +616,7 @@ async function _fetchGas(action, data, method) {
 
 async function api(action, data = {}, method = 'GET') {
   setLoading(true);
+  if (adminPin && data.pin === undefined) data = { pin: adminPin, ...data };
   try {
     try {
       return await _fetchGas(action, data, method);
@@ -957,6 +968,7 @@ async function pinKey(d) {
   try {
     const res = await api('checkPin', { pin: pinBuf }, 'POST');
     if (res.valid) {
+      adminPin = pinBuf;  // 以後の管理操作にサーバー側検証用として添付
       closeModal('pinModal');
       openAdmin();
     } else {
@@ -1030,11 +1042,11 @@ async function renderRecords() {
           : '<span class="status-badge badge-out">退勤</span>';
         return `<tr>
           <td>${dateStr(dt)}</td><td>${formatTime(dt)}</td>
-          <td>${r.staff}</td><td>${badge}</td>
+          <td>${escapeHtml(r.staff)}</td><td>${badge}</td>
           <td style="white-space:nowrap;text-align:right;">
-            <button onclick="openEditRecord('${r.id}','${r.timestamp}')"
+            <button data-act="editRec" data-id="${escapeHtml(r.id)}" data-ts="${escapeHtml(r.timestamp)}"
               style="background:var(--primary-light);border:none;color:var(--primary-dark);cursor:pointer;font-size:16px;padding:6px 10px;margin-right:6px;border-radius:6px;min-width:34px;min-height:34px;">✏</button>
-            <button onclick="deleteRecord('${r.id}')"
+            <button data-act="delRec" data-id="${escapeHtml(r.id)}"
               style="background:#fde8e8;border:none;color:var(--danger);cursor:pointer;font-size:16px;padding:6px 10px;border-radius:6px;min-width:34px;min-height:34px;">✕</button>
           </td>
         </tr>`;
@@ -1055,10 +1067,10 @@ async function renderMemoList(from, to) {
   }
   list.innerHTML = list_.map(({ date, staff, memo }) => `
     <div class="memo-list-item">
-      <div class="memo-date-tag">${date}</div>
-      <div style="flex-shrink:0;width:64px;font-size:12px;color:var(--primary-dark);font-weight:600;">${staff}</div>
-      <div class="memo-text-content">${memo.replace(/</g,'&lt;')}</div>
-      <button onclick="deleteMemo('${date}','${staff}')"
+      <div class="memo-date-tag">${escapeHtml(date)}</div>
+      <div style="flex-shrink:0;width:64px;font-size:12px;color:var(--primary-dark);font-weight:600;">${escapeHtml(staff)}</div>
+      <div class="memo-text-content">${escapeHtml(memo)}</div>
+      <button data-act="delMemo" data-date="${escapeHtml(date)}" data-staff="${escapeHtml(staff)}"
         style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:15px;flex-shrink:0;">✕</button>
     </div>`).join('');
 }
@@ -1077,7 +1089,7 @@ function openAddRecord() {
   editingRecordId = null;
   document.getElementById('recordModalTitle').textContent = '打刻を追加';
   const staffSel = document.getElementById('recordStaff');
-  staffSel.innerHTML = (staffCache || []).map(s => `<option value="${s}">${s}</option>`).join('');
+  staffSel.innerHTML = (staffCache || []).map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
   staffSel.disabled = false;
   document.getElementById('recordType').disabled = false;
   const now = new Date();
@@ -1093,7 +1105,7 @@ function openEditRecord(id, timestamp) {
   if (!rec) { showToast('記録が見つかりません'); return; }
   document.getElementById('recordModalTitle').textContent = '打刻時刻を修正';
   const staffSel = document.getElementById('recordStaff');
-  staffSel.innerHTML = `<option value="${rec.staff}">${rec.staff}</option>`;
+  staffSel.innerHTML = `<option value="${escapeHtml(rec.staff)}">${escapeHtml(rec.staff)}</option>`;
   staffSel.disabled = true;
   document.getElementById('recordType').value = rec.type;
   document.getElementById('recordType').disabled = true;
@@ -1167,7 +1179,7 @@ async function renderSummary() {
 
   const [y, mo] = month.split('-').map(Number);
   document.getElementById('printTitleSummary').textContent =
-    `月次勤務集計（${y}年${parseInt(mo)}月 / ${staffFilter}）`;
+    `月次勤務集計（${y}年${parseInt(mo)}月 / ${escapeHtml(staffFilter)}）`;
 
   try {
     const from = `${month}-01`;
@@ -1195,11 +1207,11 @@ async function renderSummary() {
           const mins = Math.round((new Date(times.out) - new Date(times.in)) / 60000);
           if (mins > 0) { totalMin += mins; dur = fmtDur(mins); }
         }
-        return `<tr><td>${date}</td><td>${inT}</td><td>${outT}</td><td>${dur}</td></tr>`;
+        return `<tr><td>${escapeHtml(date)}</td><td>${inT}</td><td>${outT}</td><td>${dur}</td></tr>`;
       }).join('');
 
       html += `<div style="margin-bottom:20px;">
-        <div style="font-weight:700;margin-bottom:8px;color:var(--primary-dark);">${staff}</div>
+        <div style="font-weight:700;margin-bottom:8px;color:var(--primary-dark);">${escapeHtml(staff)}</div>
         <div class="table-wrap"><table>
           <thead><tr><th>日付</th><th>出勤</th><th>退勤</th><th>勤務時間</th></tr></thead>
           <tbody>${rows}</tbody>
@@ -1227,7 +1239,7 @@ function populateSummarySelectors() {
   const staffList = ['全員', ...(staffCache || [])];
   const ss2 = document.getElementById('summaryStaff');
   const cs  = ss2.value;
-  ss2.innerHTML = staffList.map(s => `<option value="${s}">${s}</option>`).join('');
+  ss2.innerHTML = staffList.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
   if (cs && staffList.includes(cs)) ss2.value = cs;
 }
 
@@ -1323,7 +1335,7 @@ async function genLastMonthPDF() {
         <td class="dc">${dayLabel}</td><td class="tc">${inT}</td>
         <td class="tc">${outT}</td><td class="tc">${dur}</td>
         ${fifthCol}
-        <td class="mc">${memo}</td></tr>`;
+        <td class="mc">${escapeHtml(memo)}</td></tr>`;
     }).join('');
 
     const th5 = hasAllowance ? '日当' : '実働時間';
@@ -1339,7 +1351,7 @@ async function genLastMonthPDF() {
         </div>
         <div style="text-align:right;font-size:13px;">
           <div style="margin-bottom:4px;"><span style="font-size:10px;color:#888;width:52px;display:inline-block;">対象月</span><strong>${year}年${mo}月</strong></div>
-          <div><span style="font-size:10px;color:#888;width:52px;display:inline-block;">スタッフ</span><strong>${staffName}</strong></div>
+          <div><span style="font-size:10px;color:#888;width:52px;display:inline-block;">スタッフ</span><strong>${escapeHtml(staffName)}</strong></div>
         </div>
       </div>
       <table>
@@ -1383,8 +1395,8 @@ function renderStaffListAdmin() {
   }
   list.innerHTML = staffCache.map((name, i) => `
     <div class="staff-list-item">
-      <span>${name}</span>
-      <button class="del-btn" onclick="removeStaff('${name}')">✕</button>
+      <span>${escapeHtml(name)}</span>
+      <button class="del-btn" data-act="delStaff" data-name="${escapeHtml(name)}">✕</button>
     </div>`).join('');
 }
 
@@ -1477,6 +1489,17 @@ if (API_URL) {
   document.getElementById('setupScreen').style.display = 'flex';
   document.getElementById('loadingOverlay').classList.add('hidden');
 }
+
+// 2026-07-14 XSS完全対策：onclickに値を埋めず、data属性＋イベント委譲で処理（属性内JS脱出を原理的に不可能に）data-act delegation
+document.addEventListener('click', function(ev){
+  const b = ev.target.closest('[data-act]'); if(!b) return;
+  const a = b.getAttribute('data-act');
+  if(a==='editRec')  openEditRecord(b.getAttribute('data-id'), b.getAttribute('data-ts'));
+  else if(a==='delRec')  deleteRecord(b.getAttribute('data-id'));
+  else if(a==='delMemo') deleteMemo(b.getAttribute('data-date'), b.getAttribute('data-staff'));
+  else if(a==='delStaff') removeStaff(b.getAttribute('data-name'));
+});
+
 </script>
 </body>
 </html>
