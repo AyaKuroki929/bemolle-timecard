@@ -1,0 +1,6 @@
+# 給料計算スクリプト sync_yuka_salary.py が動作確認済みのバージョン（2026-07-13）。
+# ⚠️ numbers-parser はメジャーでない更新でもAPI（write/セル操作/数式）が変わり、
+#    黙って給料計算が壊れた実績あり。むやみに -U で上げないこと。
+#    上げる場合は必ずバックアップコピー上で sync_yuka_salary.py を通しテストしてから。
+numbers-parser==4.16.3
+requests>=2.31
