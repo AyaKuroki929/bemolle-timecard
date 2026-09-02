@@ -684,10 +684,7 @@ async function startApp() {
   }
 
   try {
-    if (!localStorage.getItem(INIT_DONE_KEY)) {
-      await api('init');
-      localStorage.setItem(INIT_DONE_KEY, '1');
-    }
+    // init は管理者専用（シート初期化）。本番はシートが揃っているため起動時には呼ばない（2026-09-02・unauthorizedで起動失敗した事故の再発防止）
     // 1回のGETリクエストで全起動データを取得（iPad: 複数呼び出しによるタイムアウト積み重ねを回避）
     const now   = new Date();
     const today = dateStr(now);
@@ -1424,6 +1421,7 @@ async function changePin() {
   const val = document.getElementById('newPin').value.trim();
   if (!/^\d{4}$/.test(val)) { showToast('4桁の数字を入力してください'); return; }
   await api('changePin', { newPin: val }, 'POST');
+      adminPin = val;  // PIN変更後は新PINを以後の管理操作に添付（旧PINのままだと401になる・Sol指摘）
   document.getElementById('newPin').value = '';
   showToast('PINを変更しました');
 }

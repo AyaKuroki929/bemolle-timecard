@@ -53,7 +53,10 @@ function doPost(e) {
 // スタッフ画面が使うため開放のまま。
 const ADMIN_ACTIONS = ['init','deleteRecord','updateRecordTimestamp','adminClockAction',
   'clearRecords','addStaff','removeStaff','changePin','setupTriggers','getDailyAllowance',
-  'deleteMemo','getStartupData'];  // 2026-07-14 Sol敵対的レビューで追加（管理専用の入れ忘れ）
+  'deleteMemo'];
+// ⚠️ getStartupData は一般スタッフの起動API（返すのは getStaff/getRecords/getAllMemos と同じ公開データ）。
+//    2026-07-14に誤って管理専用へ入れられ、2026-09-02の本番反映で起動が unauthorized → 打刻ボタンがロックされる事故になった。
+//    公開に戻す。init も本番では不要なため起動時に呼ばない（index.html側）。
 
 function getStoredPin() {
   const rows = sh(SH_SETTINGS).getDataRange().getValues();
@@ -178,6 +181,17 @@ function sh(name) {
 function clockAction(d) {
   // 2026-07-14 入力検証：登録済みスタッフ名＋type厳格化（任意名の注入・XSS素材化を防ぐ）
   if (getStaff().indexOf(d.staff) === -1) throw new Error('unknown staff');
+  // 同時リクエスト（302後の再送・二重タップ）で同じ打刻が2件入るのを防ぐ（Sol指摘・2026-09-02）
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) throw new Error('busy: しばらくしてからもう一度押してください');
+  try {
+    return clockActionLocked_(d);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function clockActionLocked_(d) {
   if (d.type !== 'in' && d.type !== 'out') throw new Error('invalid type');
   // 重複打刻チェック（サーバー側絶対防御）
   const tz    = Session.getScriptTimeZone();
@@ -353,6 +367,16 @@ function deleteRecord(d) {
 const SH_ARCHIVE  = '打刻アーカイブ';  // 2026-09-02 clearRecords の退避先（監査指摘：全削除に退避が無かった）
 
 function clearRecords() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(15000)) throw new Error('busy: 他の処理中です。しばらくしてから再実行してください');
+  try {
+    return clearRecordsLocked_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function clearRecordsLocked_() {
   const sheet = sh(SH_RECORDS);
   const last  = sheet.getLastRow();
   let archived = 0;
@@ -362,7 +386,8 @@ function clearRecords() {
     const rows = sheet.getRange(2, 1, last - 1, 4).getValues();
     const ssApp = SpreadsheetApp.getActiveSpreadsheet();
     let arc = ssApp.getSheetByName(SH_ARCHIVE);
-    if (!arc) { arc = ssApp.insertSheet(SH_ARCHIVE); arc.appendRow(['id', 'staff', 'type', 'timestamp', 'archived_at']); }
+    if (!arc) { arc = ssApp.insertSheet(SH_ARCHIVE); }
+    if (arc.getLastRow() === 0) arc.appendRow(['id', 'staff', 'type', 'timestamp', 'archived_at']);  // 名前だけの空シートでもヘッダを作る（Sol指摘）
     const at = new Date().toISOString();
     arc.getRange(arc.getLastRow() + 1, 1, rows.length, 5).setValues(rows.map(r => r.concat([at])));
     archived = rows.length;
