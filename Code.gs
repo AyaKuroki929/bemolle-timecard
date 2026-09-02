@@ -350,6 +350,10 @@ function getRecords(params) {
 }
 
 function deleteRecord(d) {
+  return withRecordLock_(function () { return deleteRecordLocked_(d); });
+}
+
+function deleteRecordLocked_(d) {
   const sheet = sh(SH_RECORDS);
   const rows  = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
@@ -365,6 +369,15 @@ function deleteRecord(d) {
 }
 
 const SH_ARCHIVE  = '打刻アーカイブ';  // 2026-09-02 clearRecords の退避先（監査指摘：全削除に退避が無かった）
+
+// 打刻記録を変更する処理は同一の ScriptLock で直列化する（Sol再レビュー・2026-09-02）。
+// clearRecords/clockAction だけでなく deleteRecord/updateRecordTimestamp/adminClockAction も対象にしないと、
+// アーカイブ読み取り→削除の間に割り込まれて行ズレや修正結果の消失が起きる。
+function withRecordLock_(fn, waitMs) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(waitMs || 10000)) throw new Error('busy: 他の処理中です。しばらくしてからもう一度お試しください');
+  try { return fn(); } finally { lock.releaseLock(); }
+}
 
 function clearRecords() {
   const lock = LockService.getScriptLock();
@@ -400,6 +413,10 @@ function clearRecordsLocked_() {
 
 // ─── 打刻時刻の修正（管理者操作）───────────────────
 function updateRecordTimestamp(d) {
+  return withRecordLock_(function () { return updateRecordTimestampLocked_(d); });
+}
+
+function updateRecordTimestampLocked_(d) {
   const sheet = sh(SH_RECORDS);
   const rows  = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
@@ -416,6 +433,10 @@ function updateRecordTimestamp(d) {
 
 // ─── 代理打刻（管理者操作・重複チェック無効）─────────
 function adminClockAction(d) {
+  return withRecordLock_(function () { return adminClockActionLocked_(d); });
+}
+
+function adminClockActionLocked_(d) {
   const id = Date.now().toString();
   sh(SH_RECORDS).appendRow([id, d.staff, d.type, d.timestamp]);
   if (d.staff === NAKATA_NAME)   refreshNakataSheet();
