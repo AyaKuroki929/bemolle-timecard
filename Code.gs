@@ -350,13 +350,27 @@ function deleteRecord(d) {
   return { deleted: false };
 }
 
+const SH_ARCHIVE  = '打刻アーカイブ';  // 2026-09-02 clearRecords の退避先（監査指摘：全削除に退避が無かった）
+
 function clearRecords() {
   const sheet = sh(SH_RECORDS);
   const last  = sheet.getLastRow();
-  if (last > 1) sheet.deleteRows(2, last - 1);
+  let archived = 0;
+  if (last > 1) {
+    // 全削除の前に必ずアーカイブへ退避する（給料の元データが一発で消えるのを防ぐ）。
+    // 退避に失敗したら削除しない（fail closed）。
+    const rows = sheet.getRange(2, 1, last - 1, 4).getValues();
+    const ssApp = SpreadsheetApp.getActiveSpreadsheet();
+    let arc = ssApp.getSheetByName(SH_ARCHIVE);
+    if (!arc) { arc = ssApp.insertSheet(SH_ARCHIVE); arc.appendRow(['id', 'staff', 'type', 'timestamp', 'archived_at']); }
+    const at = new Date().toISOString();
+    arc.getRange(arc.getLastRow() + 1, 1, rows.length, 5).setValues(rows.map(r => r.concat([at])));
+    archived = rows.length;
+    sheet.deleteRows(2, last - 1);
+  }
   refreshNakataSheet();
   refreshTakeuchiSheet();
-  return { cleared: true };
+  return { cleared: true, archived };
 }
 
 // ─── 打刻時刻の修正（管理者操作）───────────────────
