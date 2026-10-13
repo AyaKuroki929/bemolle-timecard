@@ -23,7 +23,7 @@ import os
 
 # ── 設定 ──────────────────────────────────────────────────────────────
 GAS_URL    = "https://script.google.com/macros/s/AKfycbw9SmXqYA0i_Vysp4l0ZbRcNjvTs0miOm-CFVcF9kWLGm-VZ43sqo9FWT0rpgf0PJq4kA/exec"
-NUMBERS_FILE = "/Users/ayakuroki/Library/Mobile Documents/com~apple~CloudDocs/紫妃彩/Bemolle/スタッフ/業務委託/有加報酬.numbers"
+NUMBERS_FILE = "/Users/ayakuroki/Library/CloudStorage/GoogleDrive-nailsalon.flat@gmail.com/マイドライブ/Bemolle/スタッフ/業務委託/報酬明細/有加報酬.numbers"
 STAFF_NAME = "中田有加"
 # ──────────────────────────────────────────────────────────────────────
 
